@@ -1,23 +1,27 @@
 import cron from 'node-cron';
 import { BatchOrchestrator } from './agents/BatchOrchestrator';
+import { SettingsRepository } from './infrastructure/database/SettingsRepository';
+import { Market } from './model/MarketSettings';
 import { logger } from './util/logger';
 
 /**
  * Trading Batch Scheduler
- * Schedules automatic batch execution 4 times per day
+ * Dynamically schedules batches based on market settings from database
  */
 export class Scheduler {
     private orchestrator: BatchOrchestrator;
+    private settingsRepo: SettingsRepository;
     private jobs: ReturnType<typeof cron.schedule>[] = [];
 
     constructor() {
         this.orchestrator = new BatchOrchestrator();
+        this.settingsRepo = new SettingsRepository();
     }
 
     /**
-     * Start all scheduled jobs
+     * Start all scheduled jobs based on database settings
      */
-    start(): void {
+    async start(): Promise<void> {
         const enabled = process.env.ENABLE_SCHEDULER === 'true';
 
         if (!enabled) {
@@ -25,28 +29,49 @@ export class Scheduler {
             return;
         }
 
-        logger.info('⏰ Starting scheduler...');
+        logger.info('⏰ Starting market-specific scheduler...');
 
-        // Get schedules from environment
-        const schedules = [
-            process.env.BATCH_SCHEDULE_1 || '5 9 * * 1-5', // 09:05 Mon-Fri
-            process.env.BATCH_SCHEDULE_2 || '30 10 * * 1-5', // 10:30 Mon-Fri
-            process.env.BATCH_SCHEDULE_3 || '30 13 * * 1-5', // 13:30 Mon-Fri
-            process.env.BATCH_SCHEDULE_4 || '0 15 * * 1-5', // 15:00 Mon-Fri
-        ];
+        try {
+            // Load enabled markets from database
+            const enabledMarkets = await this.settingsRepo.getEnabledMarkets();
 
-        // Schedule each batch
-        schedules.forEach((schedule, index) => {
-            const job = cron.schedule(schedule, async () => {
-                logger.info(`⏰ Scheduled batch ${index + 1} triggered`, { schedule });
-                await this.runBatch();
+            if (enabledMarkets.length === 0) {
+                logger.warn('⚠️  No markets enabled in database');
+                return;
+            }
+
+            // Schedule batches for each enabled market
+            for (const marketConfig of enabledMarkets) {
+                const market = marketConfig.market as Market;
+                const times = marketConfig.schedule_times;
+
+                logger.info(`📊 Setting up schedules for ${market} market`, {
+                    times,
+                    max_stocks: marketConfig.max_stocks,
+                });
+
+                // Create cron job for each scheduled time
+                for (const time of times) {
+                    const cronExpression = this.timeToCron(time);
+
+                    const job = cron.schedule(cronExpression, async () => {
+                        logger.info(`⏰ Scheduled batch triggered for ${market} at ${time}`);
+                        await this.runMarketBatch(market);
+                    });
+
+                    this.jobs.push(job);
+                    logger.info(`✅ Scheduled ${market} batch at ${time}`, { cron: cronExpression });
+                }
+            }
+
+            logger.info('✅ Scheduler started', {
+                markets: enabledMarkets.map((m) => m.market),
+                total_jobs: this.jobs.length,
             });
-
-            this.jobs.push(job);
-            logger.info(`✅ Scheduled batch ${index + 1}`, { schedule });
-        });
-
-        logger.info('✅ Scheduler started', { job_count: this.jobs.length });
+        } catch (error) {
+            logger.error('Failed to start scheduler', { error });
+            throw error;
+        }
     }
 
     /**
@@ -62,14 +87,24 @@ export class Scheduler {
     }
 
     /**
-     * Run a batch manually
+     * Convert time string (HH:MM) to cron expression
+     * Example: "09:05" -> "5 9 * * *"
      */
-    async runBatch(): Promise<void> {
+    private timeToCron(time: string): string {
+        const [hour, minute] = time.split(':').map((n) => parseInt(n, 10));
+        // Run every day at specified time
+        return `${minute} ${hour} * * *`;
+    }
+
+    /**
+     * Run a batch for a specific market
+     */
+    private async runMarketBatch(market: Market): Promise<void> {
         try {
-            const result = await this.orchestrator.runBatch();
-            logger.info('Batch completed', result);
+            const result = await this.orchestrator.runBatch(market);
+            logger.info(`Batch completed for ${market}`, result);
         } catch (error) {
-            logger.error('Batch failed', { error });
+            logger.error(`Batch failed for ${market}`, { error });
         }
     }
 }

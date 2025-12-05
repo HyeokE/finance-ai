@@ -4,8 +4,10 @@ import { RiskValidator } from '../module/RiskValidator';
 import { AIDecisionEngine } from './AIDecisionEngine';
 import { OrderExecutor } from '../controller/OrderExecutor';
 import { DatabaseRepository } from '../infrastructure/database/DatabaseRepository';
+import { SettingsRepository } from '../infrastructure/database/SettingsRepository';
 import { DEFAULT_CONSTRAINTS, AIInput } from '../model/AI';
 import { Portfolio } from '../model/Trading';
+import { Market } from '../model/MarketSettings';
 import { logger } from '../util/logger';
 import { formatKRW } from '../util/formatters';
 
@@ -20,6 +22,7 @@ export class BatchOrchestrator {
     private aiEngine: AIDecisionEngine;
     private orderExecutor: OrderExecutor;
     private db: DatabaseRepository;
+    private settingsRepo: SettingsRepository;
 
     constructor() {
         this.dataCollector = new DataCollector();
@@ -28,22 +31,49 @@ export class BatchOrchestrator {
         this.aiEngine = new AIDecisionEngine();
         this.orderExecutor = new OrderExecutor();
         this.db = new DatabaseRepository();
+        this.settingsRepo = new SettingsRepository();
     }
 
     /**
-     * Run a complete batch cycle
+     * Run a complete batch cycle for a specific market
      */
-    async runBatch(): Promise<{ runId: string; status: 'success' | 'failed' | 'partial' }> {
+    async runBatch(market: Market): Promise<{ runId: string; status: 'success' | 'failed' | 'partial' }> {
         const mode = (process.env.MODE as 'live' | 'paper' | 'backtest') || 'paper';
         let runId = '';
         let status: 'success' | 'failed' | 'partial' = 'failed';
 
         try {
-            logger.info('🚀 Starting batch execution', { mode });
+            // Load market-specific settings
+            const marketSettings = await this.settingsRepo.getMarketBatchSettings(market);
+            const riskSettings = await this.settingsRepo.getMarketRiskSettings(market);
 
-            // Step 1: Create run record
-            runId = await this.db.createRun(mode);
-            logger.info('Created batch run', { run_id: runId });
+            if (!marketSettings.enabled) {
+                logger.warn(`Market ${market} is disabled, skipping batch`, { market });
+                throw new Error(`Market ${market} is disabled`);
+            }
+
+            logger.info('Starting batch run', {
+                market,
+                mode,
+                max_stocks: marketSettings.max_stocks,
+            });
+
+            // Load watchlist for this market
+            const watchlist = await this.settingsRepo.getWatchlist(market);
+            const enabledWatchlist = watchlist.filter((w: any) => w.enabled);
+
+            if (enabledWatchlist.length > 0) {
+                logger.info(`📋 Using watchlist with ${enabledWatchlist.length} stocks`, {
+                    market,
+                    tickers: enabledWatchlist.map((w: any) => w.ticker),
+                });
+            } else {
+                logger.info(`📊 Watchlist empty, will scan top ${marketSettings.max_stocks} stocks`, { market });
+            }
+
+            // Step 1: Create run record with market
+            runId = await this.db.createRun(mode, market);
+            logger.info('Created run', { runId, market });
 
             // Step 2: Collect account and market data
             logger.info('📊 Step 1/6: Collecting data...');
@@ -66,11 +96,23 @@ export class BatchOrchestrator {
                 positions: portfolio.positions.length,
             });
 
-            // Step 3: Get stock universe and compress context
-            logger.info('🔍 Step 2/6: Compressing context...');
-            const topTickers = await this.dataCollector.collectTopStocksByVolume(100);
-            const heldTickers = portfolio.positions.map((p) => p.ticker);
-            const universe = this.contextCompressor.filterStockUniverse(topTickers, heldTickers, 50);
+            // Save portfolio snapshot
+            await this.db.savePortfolioSnapshot(runId, portfolio);
+
+            // Step 3: Collect stock universe and compress
+            logger.info('🔍 Step 2/6: Analyzing market...');
+
+            // Get stock universe based on watchlist
+            let universe: string[];
+            if (enabledWatchlist.length > 0) {
+                // Use watchlist tickers
+                universe = enabledWatchlist.map((w: any) => w.ticker);
+            } else {
+                // Collect top stocks by volume
+                const topTickers = await this.dataCollector.collectTopStocksByVolume(100);
+                const heldTickers = portfolio.positions.map((p) => p.ticker);
+                universe = this.contextCompressor.filterStockUniverse(topTickers, heldTickers, marketSettings.max_stocks);
+            }
 
             const compressedMarket = await this.contextCompressor.compressMarketData(
                 universe,

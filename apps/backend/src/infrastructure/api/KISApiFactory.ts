@@ -41,7 +41,9 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
 
         const axiosInstance = axios.create({
             baseURL,
-            timeout: config?.timeout || DEFAULT_TIMEOUT,
+            timeout: 30000,
+            maxContentLength: 50 * 1024 * 1024, // 50MB response limit
+            maxBodyLength: 50 * 1024 * 1024,    // 50MB request limit  
             headers: {
                 'Content-Type': 'application/json; charset=utf-8',
             },
@@ -50,6 +52,11 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
         // Request interceptor: Auto-inject token and generate HashKey
         axiosInstance.interceptors.request.use(
             async (requestConfig) => {
+                // Skip token injection for OAuth token request itself (prevent infinite loop!)
+                if (requestConfig.url?.includes('/oauth2/tokenP')) {
+                    return requestConfig;
+                }
+
                 // Ensure we have a valid token
                 const token = await this.ensureValidToken(axiosInstance);
                 requestConfig.headers.Authorization = `Bearer ${token}`;
@@ -69,13 +76,24 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
             (error) => Promise.reject(error)
         );
 
-        // Response interceptor: Handle token expiry
+        // Response interceptor: Handle token expiry and log errors
         axiosInstance.interceptors.response.use(
             (response) => response,
             async (error) => {
+                // Log detailed error information
+                if (error.response) {
+                    logger.error('KIS API Error Response', {
+                        status: error.response.status,
+                        statusText: error.response.statusText,
+                        data: error.response.data,
+                        url: error.config?.url,
+                        params: error.config?.params,
+                    });
+                }
+
                 // If 401 unauthorized, token may be expired
                 if (error.response?.status === 401) {
-                    console.warn('⚠️ KIS API token expired, refreshing...');
+                    logger.warn('⚠️ KIS API token expired, refreshing...');
                     this.accessToken = null;
                     this.tokenExpiry = null;
                 }
@@ -114,8 +132,11 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
             const appSecret = process.env.KIS_APP_SECRET;
 
             if (!appKey || !appSecret) {
+                logger.error('KIS_APP_KEY and KIS_APP_SECRET must be set in .env');
                 throw new Error('KIS_APP_KEY and KIS_APP_SECRET must be set in .env');
             }
+
+            logger.info('Requesting KIS OAuth token...');
 
             const response = await axiosInstance.post(
                 '/oauth2/tokenP',
@@ -138,9 +159,15 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
             const expiryMinutes = 23 * 60 + 50;
             this.tokenExpiry = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
-            console.log('✅ KIS access token obtained, expires at:', this.tokenExpiry.toISOString());
-        } catch (error) {
-            console.error('❌ Failed to obtain KIS access token:', error);
+            logger.info('✅ KIS access token obtained', {
+                expires_at: this.tokenExpiry.toISOString()
+            });
+        } catch (error: any) {
+            logger.error('❌ Failed to obtain KIS access token', {
+                error: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
             throw error;
         }
     }

@@ -1,107 +1,194 @@
 import { Request, Response } from 'express';
 import { SettingsRepository } from '../infrastructure/database/SettingsRepository';
+import { Market } from '../model/MarketSettings';
 import { logger } from '../util/logger';
 
-const settingsRepo = new SettingsRepository();
+// Lazy initialization to ensure .env is loaded first
+let settingsRepo: SettingsRepository | null = null;
+const getSettingsRepo = () => {
+    if (!settingsRepo) {
+        settingsRepo = new SettingsRepository();
+    }
+    return settingsRepo;
+};
 
-/**
- * Get batch settings
- */
-export async function getBatchSettings(req: Request, res: Response) {
+// ================== Market Batch Settings ==================
+
+export const getAllMarketBatchSettings = async (req: Request, res: Response) => {
     try {
-        const settings = await settingsRepo.getBatchSettings();
-        res.json(settings);
+        const settings = await getSettingsRepo().getAllMarketBatchSettings();
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        logger.error('Failed to get market batch settings', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get settings',
+        });
+    }
+};
+
+export const getMarketBatchSettings = async (req: Request, res: Response) => {
+    try {
+        const market = req.params.market as Market;
+        const settings = await getSettingsRepo().getMarketBatchSettings(market);
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        logger.error('Failed to get market batch settings', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get settings',
+        });
+    }
+};
+
+export const updateMarketBatchSettings = async (req: Request, res: Response) => {
+    try {
+        const market = req.params.market as Market;
+        const updates = req.body;
+        const settings = await getSettingsRepo().updateMarketBatchSettings(market, updates);
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        logger.error('Failed to update market batch settings', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to update settings',
+        });
+    }
+};
+
+// ================== Market Risk Settings ==================
+
+export const getMarketRiskSettings = async (req: Request, res: Response) => {
+    try {
+        const market = req.params.market as Market;
+        const settings = await getSettingsRepo().getMarketRiskSettings(market);
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        logger.error('Failed to get market risk settings', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get settings',
+        });
+    }
+};
+
+export const updateMarketRiskSettings = async (req: Request, res: Response) => {
+    try {
+        const market = req.params.market as Market;
+        const updates = req.body;
+        const settings = await getSettingsRepo().updateMarketRiskSettings(market, updates);
+        res.json({ success: true, data: settings });
+    } catch (error) {
+        logger.error('Failed to update market risk settings', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to update settings',
+        });
+    }
+};
+
+// ================== Legacy Settings (deprecated) ==================
+
+export const getBatchSettings = async (req: Request, res: Response) => {
+    try {
+        const settings = await getSettingsRepo().getBatchSettings();
+        res.json({ success: true, data: settings });
     } catch (error) {
         logger.error('Failed to get batch settings', { error });
         res.status(500).json({
+            success: false,
             error: error instanceof Error ? error.message : 'Failed to get batch settings',
         });
     }
-}
+};
 
-/**
- * Update batch settings
- */
-export async function updateBatchSettings(req: Request, res: Response) {
+export const updateBatchSettings = async (req: Request, res: Response) => {
     try {
         const updates = req.body;
-        const settings = await settingsRepo.updateBatchSettings(updates);
-
-        res.json({
-            success: true,
-            settings,
-        });
+        const settings = await getSettingsRepo().updateBatchSettings(updates);
+        res.json({ success: true, data: settings });
     } catch (error) {
         logger.error('Failed to update batch settings', { error });
         res.status(500).json({
+            success: false,
             error: error instanceof Error ? error.message : 'Failed to update batch settings',
         });
     }
-}
+};
 
-/**
- * Get risk settings
- */
-export async function getRiskSettings(req: Request, res: Response) {
+export const getRiskSettings = async (req: Request, res: Response) => {
     try {
-        const settings = await settingsRepo.getRiskSettings();
-        res.json(settings);
+        const settings = await getSettingsRepo().getRiskSettings();
+        res.json({ success: true, data: settings });
     } catch (error) {
         logger.error('Failed to get risk settings', { error });
         res.status(500).json({
+            success: false,
             error: error instanceof Error ? error.message : 'Failed to get risk settings',
         });
     }
-}
+};
 
-/**
- * Update risk settings
- */
-export async function updateRiskSettings(req: Request, res: Response) {
+export const updateRiskSettings = async (req: Request, res: Response) => {
     try {
         const updates = req.body;
-        const settings = await settingsRepo.updateRiskSettings(updates);
-
-        res.json({
-            success: true,
-            settings,
-        });
+        const settings = await getSettingsRepo().updateRiskSettings(updates);
+        res.json({ success: true, data: settings });
     } catch (error) {
         logger.error('Failed to update risk settings', { error });
         res.status(500).json({
+            success: false,
             error: error instanceof Error ? error.message : 'Failed to update risk settings',
         });
     }
-}
+};
 
-/**
- * Get dashboard overview
- */
-export async function getDashboardOverview(req: Request, res: Response) {
+// ================== Dashboard ==================
+
+export const getDashboardOverview = async (req: Request, res: Response) => {
     try {
-        const overview = await settingsRepo.getDashboardOverview();
-        res.json(overview);
+        const overview = await getSettingsRepo().getDashboardOverview();
+        res.json({ success: true, data: overview });
     } catch (error) {
         logger.error('Failed to get dashboard overview', { error });
         res.status(500).json({
-            error: error instanceof Error ? error.message : 'Failed to get dashboard overview',
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get overview',
         });
     }
-}
+};
 
-/**
- * Get recent decisions
- */
-export async function getRecentDecisions(req: Request, res: Response) {
+export const getRecentDecisions = async (req: Request, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 20;
-        const decisions = await settingsRepo.getRecentDecisions(limit);
-
-        res.json(decisions);
+        const decisions = await getSettingsRepo().getRecentDecisions(limit);
+        res.json({ success: true, data: decisions });
     } catch (error) {
         logger.error('Failed to get recent decisions', { error });
         res.status(500).json({
-            error: error instanceof Error ? error.message : 'Failed to get recent decisions',
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get decisions',
         });
     }
-}
+};
+
+export const getRecentOrders = async (req: Request, res: Response) => {
+    try {
+        const limit = parseInt(req.query.limit as string) || 50;
+        const { data, error } = await getSettingsRepo()['db']
+            .from('orders')
+            .select('*, runs(started_at, status, market)')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) throw error;
+
+        res.json({ success: true, data: data || [] });
+    } catch (error) {
+        logger.error('Failed to get recent orders', { error });
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to get orders',
+        });
+    }
+};

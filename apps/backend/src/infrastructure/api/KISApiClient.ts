@@ -18,10 +18,20 @@ export class KISApiClient {
      * 주식잔고조회
      */
     async getAccountBalance(accountNumber: string): Promise<any> {
+        // Remove hyphen if present: "50157719-01" -> "5015771901"
+        const cleanAccountNumber = accountNumber.replace(/-/g, '');
+
+        // TR_ID differs based on mode (paper vs live)
+        const mode = process.env.MODE || 'paper';
+        const trId = mode === 'live' ? 'TTTC8434R' : 'VTTC8434R';
+
         const response = await this.http.get('/uapi/domestic-stock/v1/trading/inquire-balance', {
+            headers: {
+                'tr_id': trId,
+            },
             params: {
-                CANO: accountNumber.substring(0, 8),
-                ACNT_PRDT_CD: accountNumber.substring(8),
+                CANO: cleanAccountNumber.substring(0, 8),
+                ACNT_PRDT_CD: cleanAccountNumber.substring(8),
                 AFHR_FLPR_YN: 'N',
                 OFL_YN: '',
                 INQR_DVSN: '02',
@@ -64,7 +74,9 @@ export class KISApiClient {
      * 주식현재가 시세
      */
     async getCurrentPrice(ticker: string): Promise<any> {
+        const mode = process.env.MODE || 'paper';
         const response = await this.http.get('/uapi/domestic-stock/v1/quotations/inquire-price', {
+            headers: { 'tr_id': mode === 'live' ? 'FHKST01010100' : 'FHKST01010100' },
             params: {
                 FID_COND_MRKT_DIV_CODE: 'J',
                 FID_INPUT_ISCD: ticker,
@@ -78,9 +90,11 @@ export class KISApiClient {
      * 주식당일분봉조회
      */
     async getMinuteCandles(ticker: string, interval: number = 1): Promise<any> {
+        const mode = process.env.MODE || 'paper';
         const response = await this.http.get(
             '/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice',
             {
+                headers: { 'tr_id': mode === 'live' ? 'FHKST03010200' : 'FHKST03010200' },
                 params: {
                     FID_ETC_CLS_CODE: '',
                     FID_COND_MRKT_DIV_CODE: 'J',
@@ -98,7 +112,9 @@ export class KISApiClient {
      * 국내주식기간별시세(일/주/월/년)
      */
     async getDailyPrices(ticker: string, startDate: string, endDate: string): Promise<any> {
+        const mode = process.env.MODE || 'paper';
         const response = await this.http.get('/uapi/domestic-stock/v1/quotations/inquire-daily-price', {
+            headers: { 'tr_id': mode === 'live' ? 'FHKST03010100' : 'FHKST03010100' },
             params: {
                 FID_COND_MRKT_DIV_CODE: 'J',
                 FID_INPUT_ISCD: ticker,
@@ -162,7 +178,9 @@ export class KISApiClient {
      * 국내업종 현재지수
      */
     async getIndexInfo(indexCode: string = '0001'): Promise<any> {
+        const mode = process.env.MODE || 'paper';
         const response = await this.http.get('/uapi/domestic-stock/v1/quotations/inquire-index-price', {
+            headers: { 'tr_id': mode === 'live' ? 'FHKUP03500100' : 'FHKUP03500100' },
             params: {
                 FID_COND_MRKT_DIV_CODE: 'U',
                 FID_INPUT_ISCD: indexCode,

@@ -1,6 +1,7 @@
 import { getSupabaseClient } from './SupabaseClient';
 import { logger } from '../../util/logger';
 import { DatabaseError } from '../../util/errors';
+import { MarketBatchSettings, MarketRiskSettings, Market } from '../../model/MarketSettings';
 
 /**
  * Settings stored in database
@@ -188,7 +189,7 @@ export class SettingsRepository {
         try {
             const { data, error } = await this.db
                 .from('decisions')
-                .select('*, runs(status, started_at)')
+                .select('*, runs(started_at, status)')
                 .order('created_at', { ascending: false })
                 .limit(limit);
 
@@ -198,6 +199,239 @@ export class SettingsRepository {
         } catch (error) {
             logger.error('Failed to get recent decisions', { error });
             throw new DatabaseError('Failed to get recent decisions', undefined, error);
+        }
+    }
+
+    // ========================================
+    // WATCHLIST
+    // ========================================
+
+    async getWatchlist(market?: string): Promise<any[]> {
+        try {
+            let query = this.db.from('watchlist').select('*').order('created_at', { ascending: false });
+
+            if (market) {
+                query = query.eq('market', market);
+            }
+
+            const { data, error } = await query;
+
+            if (error) throw error;
+
+            return data || [];
+        } catch (error) {
+            logger.error('Failed to get watchlist', { market, error });
+            throw new DatabaseError('Failed to get watchlist', undefined, error);
+        }
+    }
+
+    async addWatchlistItem(item: { market: string; ticker: string; name: string; notes?: string }): Promise<any> {
+        try {
+            const { data, error } = await this.db
+                .from('watchlist')
+                .insert({
+                    market: item.market,
+                    ticker: item.ticker,
+                    name: item.name,
+                    notes: item.notes,
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            logger.info('Added watchlist item', { ticker: item.ticker, market: item.market });
+
+            return data;
+        } catch (error) {
+            logger.error('Failed to add watchlist item', { item, error });
+            throw new DatabaseError('Failed to add watchlist item', undefined, error);
+        }
+    }
+
+    async updateWatchlistItem(id: string, updates: { name?: string; enabled?: boolean; notes?: string }): Promise<any> {
+        try {
+            const { data, error } = await this.db
+                .from('watchlist')
+                .update(updates)
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            logger.info('Updated watchlist item', { id, updates });
+
+            return data;
+        } catch (error) {
+            logger.error('Failed to update watchlist item', { id, error });
+            throw new DatabaseError('Failed to update watchlist item', undefined, error);
+        }
+    }
+
+    async deleteWatchlistItem(id: string): Promise<void> {
+        try {
+            const { error } = await this.db.from('watchlist').delete().eq('id', id);
+
+            if (error) throw error;
+
+            logger.info('Deleted watchlist item', { id });
+        } catch (error) {
+            logger.error('Failed to delete watchlist item', { id, error });
+            throw new DatabaseError('Failed to delete watchlist item', undefined, error);
+        }
+    }
+
+    async toggleWatchlistItem(id: string, enabled: boolean): Promise<any> {
+        try {
+            const { data, error } = await this.db
+                .from('watchlist')
+                .update({ enabled })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            logger.info('Toggled watchlist item', { id, enabled });
+
+            return data;
+        } catch (error) {
+            logger.error('Failed to toggle watchlist item', { id, error });
+            throw new DatabaseError('Failed to toggle watchlist item', undefined, error);
+        }
+    }
+
+    // ================== Market-Specific Settings ==================
+
+    /**
+     * Get all market batch settings
+     */
+    async getAllMarketBatchSettings(): Promise<MarketBatchSettings[]> {
+        try {
+            const { data, error } = await this.db
+                .from('market_batch_settings')
+                .select('*')
+                .order('market');
+
+            if (error) throw error;
+
+            return (data || []) as MarketBatchSettings[];
+        } catch (error) {
+            logger.error('Failed to get all market batch settings', { error });
+            throw new DatabaseError('Failed to get all market batch settings', undefined, error);
+        }
+    }
+
+    /**
+     * Get batch settings for specific market
+     */
+    async getMarketBatchSettings(market: Market): Promise<MarketBatchSettings> {
+        try {
+            const { data, error } = await this.db
+                .from('market_batch_settings')
+                .select('*')
+                .eq('market', market)
+                .single();
+
+            if (error) throw error;
+
+            return data as MarketBatchSettings;
+        } catch (error) {
+            logger.error('Failed to get market batch settings', { market, error });
+            throw new DatabaseError(`Failed to get ${market} batch settings`, undefined, error);
+        }
+    }
+
+    /**
+     * Update market batch settings
+     */
+    async updateMarketBatchSettings(
+        market: Market,
+        settings: Partial<MarketBatchSettings>
+    ): Promise<MarketBatchSettings> {
+        try {
+            const { data, error } = await this.db
+                .from('market_batch_settings')
+                .update(settings)
+                .eq('market', market)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            logger.info('Market batch settings updated', { market, settings });
+
+            return data as MarketBatchSettings;
+        } catch (error) {
+            logger.error('Failed to update market batch settings', { market, error });
+            throw new DatabaseError(`Failed to update ${market} batch settings`, undefined, error);
+        }
+    }
+
+    /**
+     * Get risk settings for specific market
+     */
+    async getMarketRiskSettings(market: Market): Promise<MarketRiskSettings> {
+        try {
+            const { data, error } = await this.db
+                .from('market_risk_settings')
+                .select('*')
+                .eq('market', market)
+                .single();
+
+            if (error) throw error;
+
+            return data as MarketRiskSettings;
+        } catch (error) {
+            logger.error('Failed to get market risk settings', { market, error });
+            throw new DatabaseError(`Failed to get ${market} risk settings`, undefined, error);
+        }
+    }
+
+    /**
+     * Update market risk settings
+     */
+    async updateMarketRiskSettings(
+        market: Market,
+        settings: Partial<MarketRiskSettings>
+    ): Promise<MarketRiskSettings> {
+        try {
+            const { data, error } = await this.db
+                .from('market_risk_settings')
+                .update(settings)
+                .eq('market', market)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            logger.info('Market risk settings updated', { market, settings });
+
+            return data as MarketRiskSettings;
+        } catch (error) {
+            logger.error('Failed to update market risk settings', { market, error });
+            throw new DatabaseError(`Failed to update ${market} risk settings`, undefined, error);
+        }
+    }
+
+    /**
+     * Get enabled markets
+     */
+    async getEnabledMarkets(): Promise<MarketBatchSettings[]> {
+        try {
+            const { data, error } = await this.db
+                .from('market_batch_settings')
+                .select('*')
+                .eq('enabled', true)
+                .order('market');
+
+            if (error) throw error;
+
+            return (data || []) as MarketBatchSettings[];
+        } catch (error) {
+            logger.error('Failed to get enabled markets', { error });
+            throw new DatabaseError('Failed to get enabled markets', undefined, error);
         }
     }
 }

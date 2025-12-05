@@ -66,7 +66,7 @@ export class OpenAIClient {
         ];
 
         return this.chat(messages, {
-            model: 'gpt-4o',
+            model: 'gpt-5.1',
             temperature: 0.7,
             jsonMode: true,
         });
@@ -78,7 +78,7 @@ export class OpenAIClient {
     async testConnection(): Promise<boolean> {
         try {
             await this.chat([{ role: 'user', content: 'Hello' }], {
-                model: 'gpt-4o-mini',
+                model: 'gpt-5.1',
                 maxTokens: 10,
             });
             console.log('✅ OpenAI API connection test successful');

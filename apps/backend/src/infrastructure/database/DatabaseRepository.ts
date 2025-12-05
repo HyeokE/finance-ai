@@ -24,12 +24,13 @@ export class DatabaseRepository {
     /**
      * Create a new batch run
      */
-    async createRun(mode: 'live' | 'paper' | 'backtest'): Promise<string> {
+    async createRun(mode: 'live' | 'paper' | 'backtest', market?: string): Promise<string> {
         try {
             const { data, error } = await this.db
                 .from('runs')
                 .insert({
                     mode,
+                    market,
                     status: 'running',
                     started_at: new Date().toISOString(),
                 })
@@ -38,7 +39,7 @@ export class DatabaseRepository {
 
             if (error) throw new DatabaseError('Failed to create run', error.code, error);
 
-            logger.info('Created new batch run', { run_id: data.id, mode });
+            logger.info('Created new batch run', { run_id: data.id, mode, market });
             return data.id;
         } catch (error) {
             logger.error('Failed to create run', { error });
