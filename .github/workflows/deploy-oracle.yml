@@ -1,0 +1,196 @@
+name: Deploy to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+      - production
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install backend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build backend
+        run: pnpm build
+
+      - name: Install dashboard dependencies
+        run: |
+          cd dashboard
+          pnpm install --frozen-lockfile
+
+      - name: Build dashboard
+        run: |
+          cd dashboard
+          pnpm build
+
+      - name: Upload backend artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: |
+            dist/
+            package.json
+            pnpm-lock.yaml
+            .env.example
+
+      - name: Upload dashboard artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: dashboard/dist/
+
+  deploy-backend:
+    name: Deploy Backend to Oracle Cloud
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production'
+    
+    steps:
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          known_hosts: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+
+      - name: Deploy to Oracle Cloud
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          # Create deployment directory
+          ssh $ORACLE_USER@$ORACLE_HOST "mkdir -p ~/auto-finance"
+          
+          # Upload files
+          rsync -avz --delete \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            ./ $ORACLE_USER@$ORACLE_HOST:~/auto-finance/
+          
+          # Install dependencies and restart service
+          ssh $ORACLE_USER@$ORACLE_HOST << 'EOF'
+            cd ~/auto-finance
+            
+            # Set production environment
+            echo "MODE=live" >> .env
+            echo "KIS_BASE_URL_PROD=https://openapi.koreainvestment.com:9443" >> .env
+            
+            # Install dependencies
+            pnpm install --production
+            
+            # Restart PM2 service
+            pm2 restart auto-finance || pm2 start dist/server.js --name auto-finance
+            pm2 save
+          EOF
+
+  deploy-dashboard:
+    name: Deploy Dashboard to Oracle Cloud
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production'
+    
+    steps:
+      - name: Download dashboard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dashboard-dist
+          path: dashboard-dist
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          known_hosts: ${{ secrets.ORACLE_KNOWN_HOSTS }}
+
+      - name: Deploy Dashboard to Oracle Cloud
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          # Upload dashboard to nginx directory
+          ssh $ORACLE_USER@$ORACLE_HOST "sudo mkdir -p /var/www/auto-finance-dashboard"
+          rsync -avz --delete dashboard-dist/ $ORACLE_USER@$ORACLE_HOST:/tmp/dashboard/
+          ssh $ORACLE_USER@$ORACLE_HOST "sudo mv /tmp/dashboard/* /var/www/auto-finance-dashboard/"
+
+  docker-build:
+    name: Build and Push Docker Image (Optional)
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/production'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download backend artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-dist
+          path: dist
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Oracle Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.OCI_REGISTRY }}
+          username: ${{ secrets.OCI_USERNAME }}
+          password: ${{ secrets.OCI_AUTH_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.OCI_REGISTRY }}/auto-finance:latest
+            ${{ secrets.OCI_REGISTRY }}/auto-finance:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  notify:
+    name: Notify Deployment Status
+    needs: [deploy-backend, deploy-dashboard]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Deployment Success
+        if: ${{ needs.deploy-backend.result == 'success' && needs.deploy-dashboard.result == 'success' }}
+        run: |
+          echo "✅ Deployment successful!"
+          echo "Backend and Dashboard deployed to Oracle Cloud"
+
+      - name: Deployment Failed
+        if: ${{ needs.deploy-backend.result == 'failure' || needs.deploy-dashboard.result == 'failure' }}
+        run: |
+          echo "❌ Deployment failed!"
+          exit 1
