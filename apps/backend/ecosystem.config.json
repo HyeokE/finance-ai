@@ -2,7 +2,7 @@
     "apps": [
         {
             "name": "auto-finance",
-            "script": "./apps/backend/dist/server.js",
+            "script": "./dist/server.js",
             "instances": 1,
             "exec_mode": "cluster",
             "autorestart": true,

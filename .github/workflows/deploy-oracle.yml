@@ -31,36 +31,30 @@ jobs:
           cache: 'pnpm'
 
       - name: Install backend dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       - name: Build backend
-        run: pnpm build
-
-      - name: Install dashboard dependencies
-        run: |
-          cd dashboard
-          pnpm install --frozen-lockfile
+        run: pnpm --filter @auto-finance/backend build
 
       - name: Build dashboard
-        run: |
-          cd dashboard
-          pnpm build
+        run: pnpm --filter @auto-finance/dashboard build
 
       - name: Upload backend artifacts
         uses: actions/upload-artifact@v4
         with:
           name: backend-dist
           path: |
-            dist/
-            package.json
+            apps/backend/dist/
+            apps/backend/package.json
             pnpm-lock.yaml
+            pnpm-workspace.yaml
             .env.example
 
       - name: Upload dashboard artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dashboard-dist
-          path: dashboard/dist/
+          path: apps/dashboard/dist/
 
   deploy-backend:
     name: Deploy Backend to Oracle Cloud
@@ -106,6 +100,7 @@ jobs:
             pnpm install --production
             
             # Restart PM2 service
+            cd apps/backend
             pm2 restart auto-finance || pm2 start dist/server.js --name auto-finance
             pm2 save
           EOF

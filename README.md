@@ -1,46 +1,40 @@
 # Auto-Finance: AI-Powered Multi-Market Trading Bot
 
-> 🤖 AI 기반 자동 매매 시스템 - 한국 및 해외 주식 지원
+> 🤖 AI 기반 자동 매매 시스템 - 한국 및 해외 주식 지원 (Monorepo)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-ISC-orange)](LICENSE)
+[![pnpm](https://img.shields.io/badge/pnpm-Workspace-orange)](https://pnpm.io/)
 
-## 🌍 Supported Markets
+## 📦 Monorepo Structure
 
-- 🇰🇷 **Korea**: KOSPI, KOSDAQ
-- 🇺🇸 **United States**: NASDAQ, NYSE, AMEX
-- 🇭🇰 **Hong Kong**: HKEX
-- 🇯🇵 **Japan**: Tokyo Stock Exchange
-- 🇨🇳 **China**: Shanghai, Shenzhen
+```
+auto-finance/
+├── apps/
+│   ├── backend/          # Trading bot server
+│   └── dashboard/        # React admin dashboard
+├── packages/             # Shared packages (future)
+├── pnpm-workspace.yaml   # Workspace config
+└── package.json          # Root package
+```
 
 ## ✨ Features
 
 ### Core Features
-- **AI-Powered Decisions**: GPT-4o analyzes market data and makes trading decisions
-- **Multi-Market Support**: Trade stocks across 5 different markets
-- **Risk Management**: Position limits, stop loss, currency exposure controls
-- **Paper Trading**: Test strategies without real money
-- **Automated Execution**: 4x daily batch runs during market hours
-- **Complete Audit Trail**: All decisions and trades logged to database
-
-### Advanced Features
-- **Context Compression**: Optimizes GPT token usage
-- **Currency Management**: Multi-currency portfolio tracking
-- **Factory Pattern API**: Clean, testable architecture
-- **Real-time Monitoring**: Health checks and analytics endpoints
-- **Flexible Scheduling**: Configurable batch times via cron
+- **AI-Powered Decisions**: GPT-4o analyzes market data
+- **Multi-Market Support**: Korea, US, Hong Kong, Japan, China
+- **Risk Management**: Position limits, currency exposure
+- **Web Dashboard**: Real-time monitoring and configuration
+- **Paper Trading**: Test strategies safely
+- **Automated Execution**: 4x daily batch runs
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- pnpm (or npm/yarn)
-- Accounts:
-  - [Korea Investment & Securities](https://www.koreainvestment.com/) (한국투자증권)
-  - [OpenAI](https://platform.openai.com/)
-  - [Supabase](https://supabase.com/)
+- pnpm 8+ (`npm install -g pnpm`)
+- Accounts: KIS, OpenAI, Supabase
 
 ### Installation
 
@@ -49,55 +43,39 @@
 git clone https://github.com/yourusername/auto-finance.git
 cd auto-finance
 
-# Install dependencies
+# Install all dependencies
 pnpm install
 
 # Copy environment template
 cp .env.example .env
-
-# Edit .env with your credentials
-nano .env
+nano .env  # Fill in your credentials
 ```
 
 ### Database Setup
 
-1. Create a Supabase project
-2. Run the schema:
+1. Create Supabase project
+2. Run migrations:
 ```bash
-cat src/infrastructure/database/schema.sql
-```
-3. Copy and execute in Supabase SQL editor
-
-### Configuration
-
-Edit `.env` file:
-
-```bash
-# Required
-KIS_APP_KEY=your_kis_app_key
-KIS_APP_SECRET=your_kis_secret
-KIS_ACCOUNT_NUMBER=your_account
-OPENAI_API_KEY=sk-your-key
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_KEY=your-service-key
-
-# Trading Mode
-MODE=paper  # Start with paper mode!
-
-# Overseas Trading
-ENABLE_OVERSEAS_TRADING=true
-SUPPORTED_MARKETS=US,HK,JP,CN
+# In Supabase SQL editor
+cat apps/backend/src/infrastructure/database/schema.sql
+cat apps/backend/src/infrastructure/database/migration_settings.sql
 ```
 
-### Run
+### Development
 
 ```bash
-# Development
-pnpm dev
+# Run backend
+pnpm dev:backend
 
-# Production
+# Run dashboard (separate terminal)
+pnpm dev:dashboard
+
+# Build everything
 pnpm build
-pnpm start
+
+# Build specific app
+pnpm build:backend
+pnpm build:dashboard
 ```
 
 ## 📊 Usage
@@ -108,164 +86,147 @@ pnpm start
 curl -X POST http://localhost:3000/api/batch/run
 ```
 
-Response:
-```json
-{
-  "success": true,
-  "run_id": "uuid-here",
-  "status": "success"
-}
+### Access Dashboard
+
+```
+http://localhost:5173
 ```
 
-### Check Batch Status
-
-```bash
-curl http://localhost:3000/api/batch/status/{run_id}
-```
-
-### View Analytics
-
-```bash
-curl http://localhost:3000/api/analytics
-```
+Features:
+- ⚙️ Batch configuration
+- 🛡️ Risk settings
+- 📊 Real-time monitoring
+- 📈 Analytics
 
 ## 🏗️ Architecture
 
-```
-┌─────────────┐
-│  Scheduler  │ (4x daily)
-└──────┬──────┘
-       │
-       v
-┌──────────────────┐
-│ BatchOrchestrator│
-├──────────────────┤
-│ 1. Data Collect  │ → KIS API (Korean + Overseas)
-│ 2. Compress      │ → Feature Engineering
-│ 3. AI Decision   │ → GPT-4o
-│ 4. Validate      │ → Risk Check
-│ 5. Execute       │ → Place Orders
-│ 6. Log           │ → Supabase
-└──────────────────┘
-```
-
-## 💰 Trading Markets
-
-### Korean Market (국내)
-- Trading hours: 09:00 - 15:30 KST
-- Currencies: KRW
-- Max position: 20% per stock
-- Examples: 삼성전자 (005930), SK하이닉스 (000660)
-
-### US Market (미국)
-- Trading hours: 23:30 - 06:00 KST (next day)
-- Currencies: USD
-- Max position: 15% per stock
-- Examples: AAPL, MSFT, GOOGL, TSLA
-
-### Hong Kong Market (홍콩)
-- Trading hours: 10:30 - 17:00 KST
-- Currencies: HKD
-- Max position: 15% per stock
-- Examples: 0700.HK (Tencent), 0941.HK (China Mobile)
-
-### Japan Market (일본)
-- Trading hours: 09:00 - 15:00 KST
-- Currencies: JPY
-- Max position: 15% per stock
-- Examples: 7203.T (Toyota), 9984.T (SoftBank)
-
-### China Market (중국)
-- Trading hours: 10:30 - 16:00 KST
-- Currencies: CNY
-- Max position: 15% per stock
-- Examples: 600519.SS (Moutai), 000001.SZ (Ping An)
-
-## 🛡️ Risk Management
-
-### Position Limits
-- **Domestic**: Max 20% per stock, 80% total
-- **Overseas**: Max 15% per stock, 50% total
-
-### Currency Exposure
-- USD: Max 30%
-- HKD: Max 20%
-- JPY: Max 15%
-- CNY: Max 10%
-
-### Safety Features
-- Stop loss at -3%
-- Minimum 20% cash reserve
-- Paper mode for testing
-- AI confidence threshold (60%)
-
-## 📝 API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | System health check |
-| POST | `/api/batch/run` | Trigger manual batch |
-| GET | `/api/batch/status/:runId` | Get batch status |
-| GET | `/api/analytics` | Performance analytics |
-
-## 🔧 Development
-
-### Project Structure
+### Backend (`apps/backend`)
 
 ```
 src/
-├── agents/           # AI decision engine, orchestrator
-├── controller/       # Order execution
-├── infrastructure/   # API clients, database
+├── agents/           # AI decision engine
+├── controller/       # API controllers
+├── infrastructure/   # External services
 ├── model/            # TypeScript types
-├── module/           # Business logic
-└── util/             # Helpers (logger, retry, etc.)
+├── module/          # Business logic
+└── util/            # Helpers
 ```
 
-### Build
+### Dashboard (`apps/dashboard`)
+
+```
+src/
+├── components/      # React components
+├── lib/            # API client, utils
+└── App.tsx         # Main app
+```
+
+## 💰 Supported Markets
+
+| Market | Hours (KST) | Currency | Max Position |
+|--------|-------------|----------|--------------|
+| 🇰🇷 Korea | 09:00-15:30 | KRW | 20% |
+| 🇺🇸 US | 23:30-06:00 | USD | 15% |
+| 🇭🇰 Hong Kong | 10:30-17:00 | HKD | 15% |
+| 🇯🇵 Japan | 09:00-15:00 | JPY | 15% |
+| 🇨🇳 China | 10:30-16:00 | CNY | 15% |
+
+## 🛡️ Risk Management
+
+- **Position Limits**: 15-20% per stock
+- **Currency Exposure**: USD 30%, HKD 20%, JPY 15%, CNY 10%
+- **Cash Reserve**: Minimum 20%
+- **Stop Loss**: -3% trigger
+- **AI Confidence**: 60% threshold
+
+## 🚀 Deployment
+
+### Oracle Cloud (Automated)
+
+1. Setup GitHub Secrets
+2. Push to `main` branch
+3. GitHub Actions deploys automatically
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
+
+### Manual Deployment
 
 ```bash
+# SSH to server
+./deploy.sh
+
+# Or use pnpm
+pnpm deploy:backend
+pnpm deploy:dashboard
+```
+
+## 📝 Monorepo Commands
+
+```bash
+# Install all dependencies
+pnpm install
+
+# Build all apps
 pnpm build
+
+# Run backend dev server
+pnpm dev:backend
+
+# Run dashboard dev server
+pnpm dev:dashboard
+
+# Build specific app
+pnpm --filter @auto-finance/backend build
+pnpm --filter @auto-finance/dashboard build
+
+# Type check all
+pnpm typecheck
+
+# Clean all builds
+pnpm clean
 ```
 
-### Lint & Format
+## 🔧 Environment Variables
+
+### Backend (.env in root)
 
 ```bash
-pnpm lint
-pnpm format
+MODE=paper  # paper | live | backtest
+KIS_APP_KEY=your_key
+KIS_APP_SECRET=your_secret
+OPENAI_API_KEY=your_key
+SUPABASE_URL=your_url
+SUPABASE_SERVICE_KEY=your_key
+```
+
+### Dashboard (apps/dashboard/.env)
+
+```bash
+VITE_API_URL=http://localhost:3000
+VITE_SUPABASE_URL=your_url
+VITE_SUPABASE_ANON_KEY=your_key
 ```
 
 ## 📖 Documentation
 
-- [Implementation Plan](./implementation_plan.md)
-- [Overseas Trading Plan](./overseas_implementation_plan.md)
-- [Coding Rules](./CODING_RULES.md)
-- [Walkthrough](./walkthrough.md)
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our contributing guidelines first.
+- [Implementation Plan](./docs/implementation_plan.md)
+- [Overseas Trading](./docs/overseas_implementation_plan.md)
+- [Dashboard Guide](./docs/dashboard_quickstart.md)
+- [Deployment Guide](./DEPLOYMENT.md)
 
 ## ⚠️ Disclaimer
 
 **This software is for educational purposes only.**
 
-- Trading involves substantial risk of loss
-- Past performance does not guarantee future results
-- Start with paper trading mode
+- Trading involves substantial risk
+- Start with paper mode
 - Never invest more than you can afford to lose
-- Consult a financial advisor before trading
+- Consult a financial advisor
 
 ## 📄 License
 
-ISC License - see [LICENSE](LICENSE) file for details.
-
-## 🙋 Support
-
-- GitHub Issues: [Create an issue](https://github.com/yourusername/auto-finance/issues)
-- Documentation: Check `/docs` folder
-- KIS API Docs: https://apiportal.koreainvestment.com/
+ISC License
 
 ---
 
-Made with ❤️ by Auto-Finance Team
+Made with ❤️ using pnpm workspaces
