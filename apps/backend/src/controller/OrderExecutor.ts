@@ -5,7 +5,7 @@ import { OrderResult, OrderRequest } from '../model/Trading';
 import { DatabaseRepository } from '../infrastructure/database/DatabaseRepository';
 import { logger } from '../util/logger';
 import { TradingError } from '../util/errors';
-import { retryWithBackoff } from '../util/retry';
+import { retryWithBackoff, sleep } from '../util/retry';
 
 /**
  * Order Executor Controller
@@ -62,6 +62,9 @@ export class OrderExecutor {
                     broker_order_id: '',
                 });
             }
+
+            // Add delay between trade requests to respect rate limits
+            await sleep(1000);
         }
 
         logger.info('Execution complete', { success_count: results.filter((r) => r.status !== 'failed').length });
