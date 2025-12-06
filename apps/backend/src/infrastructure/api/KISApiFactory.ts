@@ -10,10 +10,25 @@ const DEFAULT_TIMEOUT = 30000;
  * KIS API Factory
  * Creates and configures Korea Investment & Securities API client
  * Following Factory pattern from CODING_RULES.md
+ * 
+ * Singleton pattern to share access token across all instances
  */
 export class KISApiFactory implements ApiFactory<KISApiClient> {
-    private accessToken: string | null = null;
-    private tokenExpiry: Date | null = null;
+    private static instance: KISApiFactory | null = null;
+    private static accessToken: string | null = null;
+    private static tokenExpiry: Date | null = null;
+    private static tokenRequestInProgress: boolean = false;
+    private static tokenRequestPromise: Promise<string> | null = null;
+
+    /**
+     * Get singleton instance
+     */
+    static getInstance(): KISApiFactory {
+        if (!KISApiFactory.instance) {
+            KISApiFactory.instance = new KISApiFactory();
+        }
+        return KISApiFactory.instance;
+    }
 
     /**
      * Create KIS API client instance
@@ -65,8 +80,10 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
                 requestConfig.headers['appkey'] = process.env.KIS_APP_KEY || '';
                 requestConfig.headers['appsecret'] = process.env.KIS_APP_SECRET || '';
 
-                // Generate HashKey for POST requests
-                if (requestConfig.method === 'post' && requestConfig.data) {
+                // Generate HashKey for POST requests (except overseas stock orders)
+                // 해외 주식 주문은 hashkey가 필요 없거나 다른 방식으로 처리됩니다
+                if (requestConfig.method === 'post' && requestConfig.data && 
+                    !requestConfig.url?.includes('/overseas-stock/v1/trading/order')) {
                     const hashKey = this.generateHashKey(requestConfig.data);
                     requestConfig.headers['hashkey'] = hashKey;
                 }
@@ -76,26 +93,44 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
             (error) => Promise.reject(error)
         );
 
-        // Response interceptor: Handle token expiry and log errors
+        // Response interceptor: Log all responses and handle token expiry
         axiosInstance.interceptors.response.use(
-            (response) => response,
+            (response) => {
+                // Log successful API response
+                logger.info('📡 KIS API Response', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.config?.url,
+                    method: response.config?.method?.toUpperCase(),
+                    params: response.config?.params,
+                    data: response.data,
+                });
+                return response;
+            },
             async (error) => {
                 // Log detailed error information
                 if (error.response) {
-                    logger.error('KIS API Error Response', {
+                    logger.error('❌ KIS API Error Response', {
                         status: error.response.status,
                         statusText: error.response.statusText,
                         data: error.response.data,
                         url: error.config?.url,
+                        method: error.config?.method?.toUpperCase(),
                         params: error.config?.params,
+                    });
+                } else if (error.request) {
+                    logger.error('❌ KIS API Request Error', {
+                        message: error.message,
+                        url: error.config?.url,
+                        method: error.config?.method?.toUpperCase(),
                     });
                 }
 
                 // If 401 unauthorized, token may be expired
                 if (error.response?.status === 401) {
                     logger.warn('⚠️ KIS API token expired, refreshing...');
-                    this.accessToken = null;
-                    this.tokenExpiry = null;
+                    KISApiFactory.accessToken = null;
+                    KISApiFactory.tokenExpiry = null;
                 }
                 return Promise.reject(error);
             }
@@ -109,18 +144,37 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
      */
     private async ensureValidToken(axiosInstance: AxiosInstance): Promise<string> {
         // Check if token is still valid
-        if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
-            return this.accessToken;
+        if (KISApiFactory.accessToken && KISApiFactory.tokenExpiry && new Date() < KISApiFactory.tokenExpiry) {
+            return KISApiFactory.accessToken;
         }
 
-        // Request new token
-        await this.requestAccessToken(axiosInstance);
-
-        if (!this.accessToken) {
-            throw new Error('Failed to obtain KIS access token');
+        // If token request is already in progress, wait for it
+        if (KISApiFactory.tokenRequestInProgress && KISApiFactory.tokenRequestPromise) {
+            try {
+                return await KISApiFactory.tokenRequestPromise;
+            } catch (error) {
+                // If the in-progress request failed, try again
+                KISApiFactory.tokenRequestInProgress = false;
+                KISApiFactory.tokenRequestPromise = null;
+            }
         }
 
-        return this.accessToken;
+        // Request new token (with lock to prevent concurrent requests)
+        KISApiFactory.tokenRequestInProgress = true;
+        KISApiFactory.tokenRequestPromise = (async () => {
+            try {
+                await this.requestAccessToken(axiosInstance);
+                if (!KISApiFactory.accessToken) {
+                    throw new Error('Failed to obtain KIS access token');
+                }
+                return KISApiFactory.accessToken;
+            } finally {
+                KISApiFactory.tokenRequestInProgress = false;
+                KISApiFactory.tokenRequestPromise = null;
+            }
+        })();
+
+        return await KISApiFactory.tokenRequestPromise;
     }
 
     /**
@@ -153,14 +207,14 @@ export class KISApiFactory implements ApiFactory<KISApiClient> {
                 }
             );
 
-            this.accessToken = response.data.access_token;
+            KISApiFactory.accessToken = response.data.access_token;
 
             // Token valid for 24 hours, set expiry to 23:50 to be safe
             const expiryMinutes = 23 * 60 + 50;
-            this.tokenExpiry = new Date(Date.now() + expiryMinutes * 60 * 1000);
+            KISApiFactory.tokenExpiry = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
             logger.info('✅ KIS access token obtained', {
-                expires_at: this.tokenExpiry.toISOString()
+                expires_at: KISApiFactory.tokenExpiry.toISOString()
             });
         } catch (error: any) {
             logger.error('❌ Failed to obtain KIS access token', {

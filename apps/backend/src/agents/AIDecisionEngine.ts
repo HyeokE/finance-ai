@@ -79,10 +79,7 @@ export class AIDecisionEngine {
             // Parse JSON response
             const output = this.parseAIResponse(responseText);
 
-            logger.info('AI decisions received', {
-                decision_count: output.decisions.length,
-                risk_level: output.risk_level,
-            });
+            logger.info('AI decisions received', output);
 
             // Validate output
             this.validateOutput(output);

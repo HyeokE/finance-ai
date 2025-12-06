@@ -32,17 +32,37 @@ export interface DashboardOverview {
         started_at: string;
         status: string;
     } | null;
+    account?: {
+        total_equity: number;
+        cash: number;
+        investment_amount: number;
+        initial_equity: number;
+        total_return: number;
+        return_rate: number;
+    };
+    pnl_trend?: Array<{
+        created_at: string;
+        total_equity: number;
+        daily_pnl: number;
+        total_pnl: number;
+    }>;
 }
 
 export interface Order {
     id: string;
     ticker: string;
     direction: 'buy' | 'sell';
+    order_type?: string;
     requested_qty: number;
+    requested_price?: number;
     filled_qty: number;
-    avg_filled_price: number;
-    status: 'pending' | 'filled' | 'failed' | 'cancelled';
+    avg_filled_price?: number;
+    status: 'pending' | 'filled' | 'failed' | 'cancelled' | 'requested' | 'partial_filled' | 'canceled';
+    broker_order_id?: string;
+    error_code?: string;
+    error_message?: string;
     created_at: string;
+    updated_at?: string;
     runs: { started_at: string; status: string; market: string };
 }
 
@@ -95,7 +115,10 @@ export const marketSettingsApi = {
 
 export const batchApi = {
     runBatch: async (market: string): Promise<{ run_id: string; status: string }> => {
-        const res = await apiClient.post(`/api/batch/run/${market}`);
+        // Use longer timeout for batch operations (60 seconds)
+        const res = await apiClient.post(`/api/batch/run/${market}`, {}, {
+            timeout: 60000, // 60 seconds
+        });
         return res.data;
     },
 };

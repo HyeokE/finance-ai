@@ -1,6 +1,6 @@
 import { KISApiClient } from '../infrastructure/api/KISApiClient';
 import { KISApiFactory } from '../infrastructure/api/KISApiFactory';
-import { AccountBalance, Position, StockFeature } from '../model/Trading';
+import { AccountBalance, Position, StockFeature, Market, EXCHANGE_CODES } from '../model/Trading';
 import { IndexInfo, Sentiment } from '../model/AI';
 import { logger } from '../util/logger';
 import { retryWithBackoff } from '../util/retry';
@@ -17,7 +17,8 @@ export class DataCollector {
     private accountNumber: string;
 
     constructor() {
-        const factory = new KISApiFactory();
+        // Use singleton factory to share access token
+        const factory = KISApiFactory.getInstance();
         this.kisApi = factory.create({
             baseURL: process.env.KIS_BASE_URL || '',
         });
@@ -167,33 +168,77 @@ export class DataCollector {
     /**
      * Collect current prices for multiple stocks
      */
-    async collectStockPrices(tickers: string[]): Promise<Map<string, number>> {
+    async collectStockPrices(tickers: string[], market: Market = Market.DOMESTIC): Promise<Map<string, number>> {
         try {
-            logger.info('Collecting stock prices...', { count: tickers.length });
+            logger.info('Collecting stock prices...', { count: tickers.length, market });
 
             const prices = new Map<string, number>();
+            const exchangeCode = EXCHANGE_CODES[market];
 
             // Batch requests with rate limiting
             for (const ticker of tickers) {
                 try {
                     await kisRateLimiter.waitIfNeeded();
-                    const priceData = await this.kisApi.getCurrentPrice(ticker);
-                    const output = priceData.output || {};
-                    const price = parseFloat(output.stck_prpr || 0);
+                    
+                    let price = 0;
+                    
+                    if (market === Market.DOMESTIC) {
+                        // Domestic stock
+                        const priceData = await this.kisApi.getCurrentPrice(ticker);
+                        const output = priceData.output || {};
+                        price = parseFloat(output.stck_prpr || 0);
+                    } else {
+                        // Overseas stock
+                        const priceData = await this.kisApi.getOverseasPrice(ticker, exchangeCode);
+                        
+                        // Check for API errors
+                        if (priceData.rt_cd !== '0') {
+                            logger.warn('KIS API error for overseas stock', {
+                                ticker,
+                                exchangeCode,
+                                rt_cd: priceData.rt_cd,
+                                msg_cd: priceData.msg_cd,
+                                msg1: priceData.msg1,
+                            });
+                            throw new Error(`KIS API error: ${priceData.msg1 || priceData.msg_cd}`);
+                        }
+                        
+                        const output = priceData.output || {};
+                        
+                        // KIS API response format for overseas stocks
+                        // Response can be array or object
+                        if (Array.isArray(output) && output.length > 0) {
+                            const stock = output[0];
+                            price = parseFloat(stock.last || stock.LAST || stock.xymd_cls_prc || 0);
+                        } else if (output && typeof output === 'object') {
+                            price = parseFloat(output.last || output.LAST || output.xymd_cls_prc || 0);
+                        }
+                        
+                        if (price === 0) {
+                            logger.debug('Overseas stock price response', {
+                                ticker,
+                                exchangeCode,
+                                output,
+                                response_keys: Object.keys(priceData),
+                            });
+                        }
+                    }
 
                     if (price > 0) {
                         prices.set(ticker, price);
+                    } else {
+                        logger.warn('Price is 0 or invalid', { ticker, market, exchangeCode });
                     }
                 } catch (error) {
-                    logger.warn('Failed to get price for ticker', { ticker, error });
+                    logger.warn('Failed to get price for ticker', { ticker, market, error });
                 }
             }
 
-            logger.info('Stock prices collected', { count: prices.size });
+            logger.info('Stock prices collected', { count: prices.size, market });
 
             return prices;
         } catch (error) {
-            logger.error('Failed to collect stock prices', { error });
+            logger.error('Failed to collect stock prices', { error, market });
             throw new ApiError('Failed to collect stock prices', undefined, error);
         }
     }
@@ -203,68 +248,131 @@ export class DataCollector {
      */
     async getStockHistory(
         ticker: string,
-        days: number = 30
+        days: number = 30,
+        market: Market = Market.DOMESTIC
     ): Promise<{ close: number; volume: number }[]> {
         try {
             const endDate = getToday();
             const startDate = getDaysAgo(days);
+            const exchangeCode = EXCHANGE_CODES[market];
 
             logger.debug(`📊 Fetching history for ${ticker}`, {
                 ticker,
+                market,
+                exchangeCode,
                 startDate,
                 endDate,
                 days,
             });
 
             await kisRateLimiter.waitIfNeeded();
-            const historyData = await retryWithBackoff(() =>
-                this.kisApi.getDailyPrices(ticker, startDate, endDate)
-            );
-
-            const output = historyData.output || [];
-            const output2 = historyData.output2 || [];
-
-            logger.debug(`📈 History API response for ${ticker}`, {
-                ticker,
-                output_length: output.length,
-                output2_length: output2.length,
-                rt_cd: historyData.rt_cd,
-                msg_cd: historyData.msg_cd,
-                msg1: historyData.msg1,
-                response_keys: Object.keys(historyData),
-            });
-
-            // Try output first, fallback to output2 if empty
-            let dataArray = output;
-            if (output.length === 0 && output2.length > 0) {
-                logger.info(`📊 Using output2 for ${ticker} (output was empty)`, {
-                    output2_length: output2.length,
-                });
-                dataArray = output2;
+            
+            let historyData: any;
+            if (market === Market.DOMESTIC) {
+                historyData = await retryWithBackoff(() =>
+                    this.kisApi.getDailyPrices(ticker, startDate, endDate)
+                );
+            } else {
+                historyData = await retryWithBackoff(() =>
+                    this.kisApi.getOverseasDailyPrices(ticker, exchangeCode, 'D', startDate, endDate)
+                );
             }
 
-            // If still empty, try a shorter date range (7 days)
-            if (dataArray.length === 0 && days > 7) {
-                logger.warn(`⚠️ Empty history data, retrying with 7 days for ${ticker}`);
-                const shortStartDate = getDaysAgo(7);
+            let dataArray: any[] = [];
+            
+            if (market === Market.DOMESTIC) {
+                const output = historyData.output || [];
+                const output2 = historyData.output2 || [];
 
-                await kisRateLimiter.waitIfNeeded();
-                const retryData = await retryWithBackoff(() =>
-                    this.kisApi.getDailyPrices(ticker, shortStartDate, endDate)
-                );
-
-                dataArray = retryData.output || retryData.output2 || [];
-                logger.debug(`📈 Retry with 7 days result`, {
+                logger.debug(`📈 History API response for ${ticker}`, {
                     ticker,
-                    length: dataArray.length,
-                    rt_cd: retryData.rt_cd,
-                    msg_cd: retryData.msg_cd,
+                    output_length: output.length,
+                    output2_length: output2.length,
+                    rt_cd: historyData.rt_cd,
+                    msg_cd: historyData.msg_cd,
+                    msg1: historyData.msg1,
+                    response_keys: Object.keys(historyData),
                 });
+
+                // Try output first, fallback to output2 if empty
+                dataArray = output;
+                if (output.length === 0 && output2.length > 0) {
+                    logger.info(`📊 Using output2 for ${ticker} (output was empty)`, {
+                        output2_length: output2.length,
+                    });
+                    dataArray = output2;
+                }
+
+                // If still empty, try a shorter date range (7 days)
+                if (dataArray.length === 0 && days > 7) {
+                    logger.warn(`⚠️ Empty history data, retrying with 7 days for ${ticker}`);
+                    const shortStartDate = getDaysAgo(7);
+
+                    await kisRateLimiter.waitIfNeeded();
+                    const retryData = await retryWithBackoff(() =>
+                        this.kisApi.getDailyPrices(ticker, shortStartDate, endDate)
+                    );
+
+                    dataArray = retryData.output || retryData.output2 || [];
+                    logger.debug(`📈 Retry with 7 days result`, {
+                        ticker,
+                        length: dataArray.length,
+                        rt_cd: retryData.rt_cd,
+                        msg_cd: retryData.msg_cd,
+                    });
+                }
+            } else {
+                // Overseas stock history
+                // Check for API errors first
+                if (historyData.rt_cd !== '0') {
+                    logger.warn('KIS API error for overseas history', {
+                        ticker,
+                        market,
+                        exchangeCode,
+                        rt_cd: historyData.rt_cd,
+                        msg_cd: historyData.msg_cd,
+                        msg1: historyData.msg1,
+                    });
+                }
+                
+                const output = historyData.output || [];
+                dataArray = Array.isArray(output) ? output : [];
+                
+                logger.debug(`📈 Overseas history API response for ${ticker}`, {
+                    ticker,
+                    market,
+                    exchangeCode,
+                    output_length: dataArray.length,
+                    rt_cd: historyData.rt_cd,
+                    msg_cd: historyData.msg_cd,
+                    msg1: historyData.msg1,
+                    response_keys: Object.keys(historyData),
+                });
+                
+                // If still empty, try without date range (get recent data)
+                if (dataArray.length === 0 && days > 7) {
+                    logger.warn(`⚠️ Empty overseas history data, retrying without date range for ${ticker}`);
+                    await kisRateLimiter.waitIfNeeded();
+                    const retryData = await retryWithBackoff(() =>
+                        this.kisApi.getOverseasDailyPrices(ticker, exchangeCode, 'D')
+                    );
+                    
+                    if (retryData.rt_cd === '0') {
+                        dataArray = retryData.output || [];
+                        logger.debug(`📈 Retry without date range result`, {
+                            ticker,
+                            length: dataArray.length,
+                            rt_cd: retryData.rt_cd,
+                        });
+                    }
+                }
             }
 
             if (dataArray.length === 0) {
                 logger.warn(`⚠️ No history data available for ${ticker}`, {
                     ticker,
+                    market,
+                    exchangeCode,
                     startDate,
                     endDate,
                     days,
@@ -278,10 +386,19 @@ export class DataCollector {
                 return [];
             }
 
-            return dataArray.map((item: any) => ({
-                close: parseFloat(item.stck_clpr || item.stck_prpr || 0),
-                volume: parseFloat(item.acml_vol || item.acml_tr_pbmn || 0),
-            }));
+            // Parse data based on market type
+            if (market === Market.DOMESTIC) {
+                return dataArray.map((item: any) => ({
+                    close: parseFloat(item.stck_clpr || item.stck_prpr || 0),
+                    volume: parseFloat(item.acml_vol || item.acml_tr_pbmn || 0),
+                }));
+            } else {
+                // Overseas stock format
+                return dataArray.map((item: any) => ({
+                    close: parseFloat(item.xymd_cls_prc || item.close || item.CLOSE || 0),
+                    volume: parseFloat(item.ovrs_tvol || item.volume || item.VOLUME || 0),
+                }));
+            }
         } catch (error) {
             logger.warn('Failed to get stock history', { ticker, error });
             return [];

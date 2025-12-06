@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { KISApiFactory } from '../infrastructure/api/KISApiFactory';
+import { Market } from '../model/Trading';
 import { logger } from '../util/logger';
 import { kisRateLimiter } from '../util/rateLimiter';
 
@@ -52,11 +53,102 @@ const KOREAN_STOCKS = [
     { ticker: '373220', name: 'LG에너지솔루션', nameEn: 'LG Energy Solution' },
 ];
 
+// US stock database - popular US stocks
+const US_STOCKS = [
+    { ticker: 'AAPL', name: 'Apple Inc.', nameEn: 'Apple Inc.' },
+    { ticker: 'MSFT', name: 'Microsoft Corporation', nameEn: 'Microsoft Corporation' },
+    { ticker: 'GOOGL', name: 'Alphabet Inc.', nameEn: 'Alphabet Inc.' },
+    { ticker: 'AMZN', name: 'Amazon.com Inc.', nameEn: 'Amazon.com Inc.' },
+    { ticker: 'NVDA', name: 'NVIDIA Corporation', nameEn: 'NVIDIA Corporation' },
+    { ticker: 'META', name: 'Meta Platforms Inc.', nameEn: 'Meta Platforms Inc.' },
+    { ticker: 'TSLA', name: 'Tesla, Inc.', nameEn: 'Tesla, Inc.' },
+    { ticker: 'BRK.B', name: 'Berkshire Hathaway Inc.', nameEn: 'Berkshire Hathaway Inc.' },
+    { ticker: 'V', name: 'Visa Inc.', nameEn: 'Visa Inc.' },
+    { ticker: 'JNJ', name: 'Johnson & Johnson', nameEn: 'Johnson & Johnson' },
+    { ticker: 'WMT', name: 'Walmart Inc.', nameEn: 'Walmart Inc.' },
+    { ticker: 'JPM', name: 'JPMorgan Chase & Co.', nameEn: 'JPMorgan Chase & Co.' },
+    { ticker: 'MA', name: 'Mastercard Incorporated', nameEn: 'Mastercard Incorporated' },
+    { ticker: 'PG', name: 'The Procter & Gamble Company', nameEn: 'The Procter & Gamble Company' },
+    { ticker: 'UNH', name: 'UnitedHealth Group Incorporated', nameEn: 'UnitedHealth Group Incorporated' },
+    { ticker: 'HD', name: 'The Home Depot, Inc.', nameEn: 'The Home Depot, Inc.' },
+    { ticker: 'DIS', name: 'The Walt Disney Company', nameEn: 'The Walt Disney Company' },
+    { ticker: 'BAC', name: 'Bank of America Corp.', nameEn: 'Bank of America Corp.' },
+    { ticker: 'ADBE', name: 'Adobe Inc.', nameEn: 'Adobe Inc.' },
+    { ticker: 'NFLX', name: 'Netflix, Inc.', nameEn: 'Netflix, Inc.' },
+    { ticker: 'CRM', name: 'Salesforce, Inc.', nameEn: 'Salesforce, Inc.' },
+    { ticker: 'PYPL', name: 'PayPal Holdings, Inc.', nameEn: 'PayPal Holdings, Inc.' },
+    { ticker: 'INTC', name: 'Intel Corporation', nameEn: 'Intel Corporation' },
+    { ticker: 'CMCSA', name: 'Comcast Corporation', nameEn: 'Comcast Corporation' },
+    { ticker: 'PEP', name: 'PepsiCo, Inc.', nameEn: 'PepsiCo, Inc.' },
+    { ticker: 'COST', name: 'Costco Wholesale Corporation', nameEn: 'Costco Wholesale Corporation' },
+    { ticker: 'TMO', name: 'Thermo Fisher Scientific Inc.', nameEn: 'Thermo Fisher Scientific Inc.' },
+    { ticker: 'AVGO', name: 'Broadcom Inc.', nameEn: 'Broadcom Inc.' },
+    { ticker: 'CSCO', name: 'Cisco Systems, Inc.', nameEn: 'Cisco Systems, Inc.' },
+    { ticker: 'ABT', name: 'Abbott Laboratories', nameEn: 'Abbott Laboratories' },
+    { ticker: 'ACN', name: 'Accenture plc', nameEn: 'Accenture plc' },
+    { ticker: 'NKE', name: 'Nike, Inc.', nameEn: 'Nike, Inc.' },
+    { ticker: 'TXN', name: 'Texas Instruments Incorporated', nameEn: 'Texas Instruments Incorporated' },
+    { ticker: 'DHR', name: 'Danaher Corporation', nameEn: 'Danaher Corporation' },
+    { ticker: 'VZ', name: 'Verizon Communications Inc.', nameEn: 'Verizon Communications Inc.' },
+    { ticker: 'LIN', name: 'Linde plc', nameEn: 'Linde plc' },
+    { ticker: 'PM', name: 'Philip Morris International Inc.', nameEn: 'Philip Morris International Inc.' },
+    { ticker: 'NEE', name: 'NextEra Energy, Inc.', nameEn: 'NextEra Energy, Inc.' },
+    { ticker: 'QCOM', name: 'QUALCOMM Incorporated', nameEn: 'QUALCOMM Incorporated' },
+    { ticker: 'RTX', name: 'RTX Corporation', nameEn: 'RTX Corporation' },
+    { ticker: 'HON', name: 'Honeywell International Inc.', nameEn: 'Honeywell International Inc.' },
+    { ticker: 'AMGN', name: 'Amgen Inc.', nameEn: 'Amgen Inc.' },
+    { ticker: 'AMAT', name: 'Applied Materials, Inc.', nameEn: 'Applied Materials, Inc.' },
+    { ticker: 'LOW', name: "Lowe's Companies, Inc.", nameEn: "Lowe's Companies, Inc." },
+    { ticker: 'INTU', name: 'Intuit Inc.', nameEn: 'Intuit Inc.' },
+    { ticker: 'BKNG', name: 'Booking Holdings Inc.', nameEn: 'Booking Holdings Inc.' },
+    { ticker: 'SBUX', name: 'Starbucks Corporation', nameEn: 'Starbucks Corporation' },
+    { ticker: 'GILD', name: 'Gilead Sciences, Inc.', nameEn: 'Gilead Sciences, Inc.' },
+    { ticker: 'ADP', name: 'Automatic Data Processing, Inc.', nameEn: 'Automatic Data Processing, Inc.' },
+    { ticker: 'ISRG', name: 'Intuitive Surgical, Inc.', nameEn: 'Intuitive Surgical, Inc.' },
+    { ticker: 'GE', name: 'General Electric Company', nameEn: 'General Electric Company' },
+    { ticker: 'MDT', name: 'Medtronic plc', nameEn: 'Medtronic plc' },
+    { ticker: 'AMT', name: 'American Tower Corporation', nameEn: 'American Tower Corporation' },
+    { ticker: 'SPGI', name: 'S&P Global Inc.', nameEn: 'S&P Global Inc.' },
+    { ticker: 'ZTS', name: 'Zoetis Inc.', nameEn: 'Zoetis Inc.' },
+    { ticker: 'EQIX', name: 'Equinix, Inc.', nameEn: 'Equinix, Inc.' },
+    { ticker: 'REGN', name: 'Regeneron Pharmaceuticals, Inc.', nameEn: 'Regeneron Pharmaceuticals, Inc.' },
+    { ticker: 'CDNS', name: 'Cadence Design Systems, Inc.', nameEn: 'Cadence Design Systems, Inc.' },
+    { ticker: 'SNPS', name: 'Synopsys, Inc.', nameEn: 'Synopsys, Inc.' },
+    { ticker: 'KLAC', name: 'KLA Corporation', nameEn: 'KLA Corporation' },
+    { ticker: 'FTNT', name: 'Fortinet, Inc.', nameEn: 'Fortinet, Inc.' },
+    { ticker: 'NXPI', name: 'NXP Semiconductors N.V.', nameEn: 'NXP Semiconductors N.V.' },
+    { ticker: 'MCHP', name: 'Microchip Technology Incorporated', nameEn: 'Microchip Technology Incorporated' },
+    { ticker: 'MRVL', name: 'Marvell Technology, Inc.', nameEn: 'Marvell Technology, Inc.' },
+    { ticker: 'ANSS', name: 'ANSYS, Inc.', nameEn: 'ANSYS, Inc.' },
+    { ticker: 'CTSH', name: 'Cognizant Technology Solutions Corporation', nameEn: 'Cognizant Technology Solutions Corporation' },
+    { ticker: 'WDAY', name: 'Workday, Inc.', nameEn: 'Workday, Inc.' },
+    { ticker: 'TEAM', name: 'Atlassian Corporation', nameEn: 'Atlassian Corporation' },
+    { ticker: 'ZM', name: 'Zoom Video Communications, Inc.', nameEn: 'Zoom Video Communications, Inc.' },
+    { ticker: 'DOCN', name: 'DigitalOcean Holdings, Inc.', nameEn: 'DigitalOcean Holdings, Inc.' },
+    { ticker: 'SNOW', name: 'Snowflake Inc.', nameEn: 'Snowflake Inc.' },
+    { ticker: 'DDOG', name: 'Datadog, Inc.', nameEn: 'Datadog, Inc.' },
+    { ticker: 'CRWD', name: 'CrowdStrike Holdings, Inc.', nameEn: 'CrowdStrike Holdings, Inc.' },
+    { ticker: 'NET', name: 'Cloudflare, Inc.', nameEn: 'Cloudflare, Inc.' },
+    { ticker: 'PLTR', name: 'Palantir Technologies Inc.', nameEn: 'Palantir Technologies Inc.' },
+    { ticker: 'RBLX', name: 'Roblox Corporation', nameEn: 'Roblox Corporation' },
+    { ticker: 'COIN', name: 'Coinbase Global, Inc.', nameEn: 'Coinbase Global, Inc.' },
+    { ticker: 'HOOD', name: 'Robinhood Markets, Inc.', nameEn: 'Robinhood Markets, Inc.' },
+    { ticker: 'SOFI', name: 'SoFi Technologies, Inc.', nameEn: 'SoFi Technologies, Inc.' },
+    { ticker: 'RIVN', name: 'Rivian Automotive, Inc.', nameEn: 'Rivian Automotive, Inc.' },
+    { ticker: 'LCID', name: 'Lucid Group, Inc.', nameEn: 'Lucid Group, Inc.' },
+    { ticker: 'F', name: 'Ford Motor Company', nameEn: 'Ford Motor Company' },
+    { ticker: 'GM', name: 'General Motors Company', nameEn: 'General Motors Company' },
+    { ticker: 'NIO', name: 'NIO Inc.', nameEn: 'NIO Inc.' },
+    { ticker: 'XPEV', name: 'XPeng Inc.', nameEn: 'XPeng Inc.' },
+    { ticker: 'LI', name: 'Li Auto Inc.', nameEn: 'Li Auto Inc.' },
+];
+
 // Lazy initialization of KIS API
 let kisApi: any = null;
 const getKISApi = () => {
     if (!kisApi) {
-        const factory = new KISApiFactory();
+        // Use singleton factory to share access token
+        const factory = KISApiFactory.getInstance();
         kisApi = factory.create();
     }
     return kisApi;
@@ -68,7 +160,9 @@ const getKISApi = () => {
 export const searchStocks = async (req: Request, res: Response) => {
     try {
         const query = (req.query.query as string || '').toLowerCase().trim();
-        const market = (req.query.market as string || 'DOMESTIC').toUpperCase();
+        const marketParam = (req.query.market as string || Market.DOMESTIC).toUpperCase();
+        // Convert string to Market enum
+        const market = Object.values(Market).find(m => m === marketParam) || Market.DOMESTIC;
 
         logger.info('Stock search request', { query, market });
 
@@ -77,7 +171,7 @@ export const searchStocks = async (req: Request, res: Response) => {
         }
 
         // For Korean market, search in local database
-        if (market === 'DOMESTIC') {
+        if (market === Market.DOMESTIC) {
             const results = KOREAN_STOCKS.filter(stock =>
                 stock.ticker.includes(query) ||
                 stock.name.toLowerCase().includes(query) ||
@@ -91,6 +185,52 @@ export const searchStocks = async (req: Request, res: Response) => {
                     name: stock.name,
                     nameEn: stock.nameEn,
                     market: 'DOMESTIC'
+                }))
+            });
+        }
+
+        // For US market, try KIS API first, then fallback to local database
+        if (market === Market.US) {
+            // First, try to search using KIS API if query looks like a ticker (uppercase, short)
+            const isTickerLike = /^[A-Z]{1,5}(\.[A-Z])?$/.test(query.toUpperCase());
+            
+            if (isTickerLike) {
+                try {
+                    await kisRateLimiter.waitIfNeeded();
+                    const kisResult = await getKISApi().searchOverseasStock(query.toUpperCase(), 'NAS');
+                    
+                    if (kisResult) {
+                        return res.json({
+                            success: true,
+                            data: [{
+                                ticker: kisResult.ticker,
+                                name: kisResult.name,
+                                nameEn: kisResult.nameEn,
+                                market: 'US',
+                                price: kisResult.price,
+                                change_pct: kisResult.change_pct,
+                            }]
+                        });
+                    }
+                } catch (error) {
+                    logger.warn('KIS API search failed, falling back to local database', { error, query });
+                }
+            }
+            
+            // Fallback to local database search
+            const results = US_STOCKS.filter(stock =>
+                stock.ticker.toLowerCase().includes(query) ||
+                stock.name.toLowerCase().includes(query) ||
+                stock.nameEn.toLowerCase().includes(query)
+            ).slice(0, 20); // Limit to 20 results
+
+            return res.json({
+                success: true,
+                data: results.map(stock => ({
+                    ticker: stock.ticker,
+                    name: stock.name,
+                    nameEn: stock.nameEn,
+                    market: 'US'
                 }))
             });
         }
@@ -112,12 +252,14 @@ export const searchStocks = async (req: Request, res: Response) => {
  */
 export const getPopularStocks = async (req: Request, res: Response) => {
     try {
-        const market = (req.query.market as string || 'DOMESTIC').toUpperCase();
+        const marketParam = (req.query.market as string || Market.DOMESTIC).toUpperCase();
+        // Convert string to Market enum
+        const market = Object.values(Market).find(m => m === marketParam) || Market.DOMESTIC;
         const limit = parseInt(req.query.limit as string || '30');
 
         logger.info('Get popular stocks request', { market, limit });
 
-        if (market === 'DOMESTIC') {
+        if (market === Market.DOMESTIC) {
             // Return top stocks from local database
             // TODO: Integrate with KIS API volume ranking for real-time data
             const stocks = KOREAN_STOCKS.slice(0, Math.min(limit, KOREAN_STOCKS.length)).map(stock => ({
@@ -125,6 +267,39 @@ export const getPopularStocks = async (req: Request, res: Response) => {
                 name: stock.name,
                 nameEn: stock.nameEn,
                 market: 'DOMESTIC'
+            }));
+
+            return res.json({ success: true, data: stocks });
+        }
+
+        if (market === Market.US) {
+            // Try to get popular stocks from KIS API first
+            try {
+                await kisRateLimiter.waitIfNeeded();
+                const kisData = await getKISApi().getOverseasPopularStocks('NAS');
+                
+                if (kisData.output && kisData.output.length > 0) {
+                    const stocks = kisData.output.slice(0, limit).map((stock: any) => ({
+                        ticker: stock.symbol || stock.SYMB,
+                        name: stock.hts_kor_isnm || stock.ovrs_nm || stock.SYMB,
+                        nameEn: stock.ovrs_nm || stock.hts_kor_isnm || stock.SYMB,
+                        market: 'US',
+                        price: parseFloat(stock.last || stock.LAST || 0),
+                        change_pct: parseFloat(stock.rate || stock.RATE || 0),
+                    }));
+                    
+                    return res.json({ success: true, data: stocks });
+                }
+            } catch (error) {
+                logger.warn('KIS API popular stocks failed, falling back to local database', { error });
+            }
+            
+            // Fallback to local database
+            const stocks = US_STOCKS.slice(0, Math.min(limit, US_STOCKS.length)).map(stock => ({
+                ticker: stock.ticker,
+                name: stock.name,
+                nameEn: stock.nameEn,
+                market: 'US'
             }));
 
             return res.json({ success: true, data: stocks });
@@ -148,11 +323,13 @@ export const getPopularStocks = async (req: Request, res: Response) => {
 export const getStockDetail = async (req: Request, res: Response) => {
     try {
         const { ticker } = req.params;
-        const market = (req.query.market as string || 'DOMESTIC').toUpperCase();
+        const marketParam = (req.query.market as string || Market.DOMESTIC).toUpperCase();
+        // Convert string to Market enum
+        const market = Object.values(Market).find(m => m === marketParam) || Market.DOMESTIC;
 
         logger.info('Get stock detail request', { ticker, market });
 
-        if (market === 'DOMESTIC') {
+        if (market === Market.DOMESTIC) {
             // Try to find in local database first
             const localStock = KOREAN_STOCKS.find(s => s.ticker === ticker);
 

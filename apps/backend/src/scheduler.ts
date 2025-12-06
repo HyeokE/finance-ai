@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { BatchOrchestrator } from './agents/BatchOrchestrator';
 import { SettingsRepository } from './infrastructure/database/SettingsRepository';
-import { Market } from './model/MarketSettings';
+import { Market } from './model/Trading';
 import { logger } from './util/logger';
 
 /**

@@ -1,4 +1,4 @@
-import { StockFeature } from '../model/Trading';
+import { StockFeature, Market } from '../model/Trading';
 import { IndexInfo, Sentiment } from '../model/AI';
 import { CompressedMarketData } from '../model/Market';
 import { DataCollector } from './DataCollector';
@@ -21,13 +21,14 @@ export class ContextCompressor {
     async compressMarketData(
         tickers: string[],
         indexInfo: IndexInfo,
-        sentiment: Sentiment
+        sentiment: Sentiment,
+        market: Market = Market.DOMESTIC
     ): Promise<CompressedMarketData> {
         try {
-            logger.info('Compressing market data...', { ticker_count: tickers.length });
+            logger.info('Compressing market data...', { ticker_count: tickers.length, market });
 
             // Collect prices
-            const prices = await this.dataCollector.collectStockPrices(tickers);
+            const prices = await this.dataCollector.collectStockPrices(tickers, market);
             logger.info('📈 Stock prices collected', {
                 total_tickers: tickers.length,
                 prices_found: prices.size,
@@ -50,7 +51,7 @@ export class ContextCompressor {
                 }
 
                 try {
-                    const feature = await this.generateStockFeature(ticker, price);
+                    const feature = await this.generateStockFeature(ticker, price, market);
                     if (feature) {
                         features.push(feature);
                         successCount++;
@@ -111,18 +112,32 @@ export class ContextCompressor {
     /**
      * Generate features for a single stock
      */
-    private async generateStockFeature(ticker: string, currentPrice: number): Promise<StockFeature | null> {
+    private async generateStockFeature(ticker: string, currentPrice: number, market: Market = Market.DOMESTIC): Promise<StockFeature | null> {
         try {
             // Get historical data (last 30 days)
-            const history = await this.dataCollector.getStockHistory(ticker, 30);
+            const history = await this.dataCollector.getStockHistory(ticker, 30, market);
 
+            // If no history, create minimal feature with price only
             if (history.length < 2) {
-                logger.warn(`📉 Insufficient history data for ${ticker}`, {
+                logger.warn(`📉 Insufficient history data for ${ticker}, creating minimal feature`, {
                     ticker,
                     history_length: history.length,
-                    required: 2,
+                    market,
                 });
-                return null;
+                
+                // Return minimal feature with price only
+                return {
+                    ticker,
+                    name: ticker,
+                    price: currentPrice,
+                    intraday_return: 0,
+                    volume_ratio: 1.0,
+                    volatility_20d: 0,
+                    ema5_position: 1.0,
+                    ema20_position: 1.0,
+                    sector: 'unknown',
+                    sector_strength: 0.5,
+                };
             }
 
             logger.debug(`📊 Processing ${ticker} with ${history.length} days of data`);

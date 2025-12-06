@@ -1,7 +1,8 @@
 import { getSupabaseClient } from './SupabaseClient';
 import { logger } from '../../util/logger';
 import { DatabaseError } from '../../util/errors';
-import { MarketBatchSettings, MarketRiskSettings, Market } from '../../model/MarketSettings';
+import { MarketBatchSettings, MarketRiskSettings } from '../../model/MarketSettings';
+import { Market } from '../../model/Trading';
 
 /**
  * Settings stored in database
@@ -170,11 +171,72 @@ export class SettingsRepository {
                 .gte('created_at', `${today}T00:00:00`)
                 .lte('created_at', `${today}T23:59:59`);
 
+            // Get latest portfolio snapshot for account info
+            // Use maybeSingle() to handle case when no data exists
+            const { data: latestPortfolio } = await this.db
+                .from('portfolio_snapshots')
+                .select('total_equity, cash, positions, total_pnl, created_at')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            // Get first portfolio snapshot (initial investment)
+            const { data: firstPortfolio } = await this.db
+                .from('portfolio_snapshots')
+                .select('total_equity, created_at')
+                .order('created_at', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+
+            // If no portfolio snapshot exists, try to get real-time account data
+            let currentEquity = latestPortfolio?.total_equity || 0;
+            let cash = latestPortfolio?.cash || 0;
+
+            // If no snapshot data, fetch real-time account balance
+            if (!latestPortfolio || currentEquity === 0) {
+                try {
+                    const { DataCollector } = await import('../../module/DataCollector');
+                    const dataCollector = new DataCollector();
+                    const accountData = await dataCollector.collectAccountData();
+                    currentEquity = accountData.total_equity;
+                    cash = accountData.cash;
+                    logger.info('Fetched real-time account data for dashboard', {
+                        total_equity: currentEquity,
+                        cash: cash,
+                    });
+                } catch (error) {
+                    logger.warn('Failed to fetch real-time account data, using snapshot data', { error });
+                    // Keep using snapshot data (which may be 0)
+                }
+            }
+
+            // Calculate investment amount and return
+            const investmentAmount = currentEquity - cash; // 투자 금액 = 총 자산 - 현금
+            const initialEquity = firstPortfolio?.total_equity || currentEquity;
+            const totalReturn = currentEquity - initialEquity;
+            const returnRate = initialEquity > 0 ? (totalReturn / initialEquity) * 100 : 0;
+
+            // Get PnL trend for last 30 days
+            const { data: pnlTrend } = await this.db
+                .from('portfolio_snapshots')
+                .select('created_at, total_equity, daily_pnl, total_pnl')
+                .gte('created_at', thirtyDaysAgo)
+                .order('created_at', { ascending: true });
+
             return {
                 latest_run: latestRun,
                 today_runs: todayRunsCount || 0,
                 today_orders: todayOrdersCount || 0,
                 success_rate_30d: successRate,
+                account: {
+                    total_equity: currentEquity,
+                    cash: cash,
+                    investment_amount: investmentAmount,
+                    initial_equity: initialEquity,
+                    total_return: totalReturn,
+                    return_rate: returnRate,
+                },
+                pnl_trend: pnlTrend || [],
             };
         } catch (error) {
             logger.error('Failed to get dashboard overview', { error });

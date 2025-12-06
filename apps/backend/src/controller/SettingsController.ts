@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { SettingsRepository } from '../infrastructure/database/SettingsRepository';
-import { Market } from '../model/MarketSettings';
+import { Market } from '../model/Trading';
 import { logger } from '../util/logger';
 
 // Lazy initialization to ensure .env is loaded first

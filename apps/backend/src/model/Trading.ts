@@ -8,9 +8,9 @@
 export enum Market {
     DOMESTIC = 'DOMESTIC',
     US = 'US',
-    HONG_KONG = 'HONG_KONG',
-    JAPAN = 'JAPAN',
-    CHINA = 'CHINA',
+    HONG_KONG = 'HK',
+    JAPAN = 'JP',
+    CHINA = 'CN',
 }
 
 /**

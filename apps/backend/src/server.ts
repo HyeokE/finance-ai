@@ -5,6 +5,7 @@ import path from 'path';
 import { BatchOrchestrator } from './agents/BatchOrchestrator';
 import { getScheduler } from './scheduler';
 import { SupabaseClientManager } from './infrastructure/database/SupabaseClient';
+import { Market } from './model/Trading';
 import { logger } from './util/logger';
 import {
   getAllMarketBatchSettings,
@@ -78,15 +79,23 @@ app.get('/health', async (req: Request, res: Response) => {
 // Trigger manual batch run
 app.post('/api/batch/run/:market?', async (req, res) => {
   try {
-    const market = (req.params.market || 'DOMESTIC') as 'DOMESTIC' | 'US' | 'HK' | 'JP' | 'CN';
-    logger.info(`Manual batch trigger requested for market: ${market}`);
+    const marketParam = req.params.market || Market.DOMESTIC;
+    // Validate and convert to Market enum
+    const marketEnum = Object.values(Market).find(m => m === marketParam);
+    if (!marketEnum) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid market. Must be one of: ${Object.values(Market).join(', ')}`,
+      });
+    }
+    logger.info(`Manual batch trigger requested for market: ${marketEnum}`);
     const orchestrator = new BatchOrchestrator();
-    const result = await orchestrator.runBatch(market);
+    const result = await orchestrator.runBatch(marketEnum);
 
     res.json({
       success: true,
       run_id: result.runId,
-      market,
+      market: marketEnum,
       status: result.status,
     });
   } catch (error) {

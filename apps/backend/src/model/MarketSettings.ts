@@ -1,4 +1,7 @@
-export type Market = 'DOMESTIC' | 'US' | 'HK' | 'JP' | 'CN';
+import { Market } from './Trading';
+
+// Re-export Market enum for convenience
+export { Market };
 
 export interface MarketBatchSettings {
     id?: string;

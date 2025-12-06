@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { BatchOrchestrator } from '../agents/BatchOrchestrator';
+import { Market } from '../model/Trading';
 import { logger } from '../util/logger';
 
 // Singleton instance to prevent memory leaks
@@ -21,16 +22,18 @@ export async function runBatchManually(req: Request, res: Response) {
     try {
         const { market } = req.params;
 
-        if (!['DOMESTIC', 'US', 'HK', 'JP', 'CN'].includes(market)) {
+        // Validate market string and convert to enum
+        const marketEnum = Object.values(Market).find(m => m === market);
+        if (!marketEnum) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid market. Must be one of: DOMESTIC, US, HK, JP, CN',
+                error: `Invalid market. Must be one of: ${Object.values(Market).join(', ')}`,
             });
         }
 
-        logger.info('Manual batch run requested', { market });
+        logger.info('Manual batch run requested', { market: marketEnum });
 
-        const result = await getOrchestrator().runBatch(market as any);
+        const result = await getOrchestrator().runBatch(marketEnum);
 
         return res.status(200).json({
             success: true,

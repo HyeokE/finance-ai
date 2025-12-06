@@ -1,4 +1,5 @@
 import { AxiosInstance } from 'axios';
+import { logger } from '../../util/logger';
 
 /**
  * KIS API Client
@@ -341,7 +342,12 @@ export class KISApiClient {
      * 해외주식 현재가
      */
     async getOverseasPrice(ticker: string, exchangeCode: string = 'NAS'): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        // tr_id: HHDFS00000300 (모의투자), HHDFS76950200 (실거래)
+        const trId = mode === 'live' ? 'HHDFS76950200' : 'HHDFS00000300';
+        
         const response = await this.http.get('/uapi/overseas-price/v1/quotations/price', {
+            headers: { 'tr_id': trId },
             params: {
                 AUTH: '',
                 EXCD: exchangeCode,
@@ -358,16 +364,28 @@ export class KISApiClient {
     async getOverseasDailyPrices(
         ticker: string,
         exchangeCode: string = 'NAS',
-        period: string = 'D' // D=Daily, W=Weekly, M=Monthly
+        period: string = 'D', // D=Daily, W=Weekly, M=Monthly
+        startDate?: string,
+        endDate?: string
     ): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        // tr_id: HHDFS00000300 (모의투자), HHDFS76950200 (실거래)
+        const trId = mode === 'live' ? 'HHDFS76950200' : 'HHDFS00000300';
+        
+        // Format dates: YYYYMMDD
+        const endDateFormatted = endDate ? endDate.replace(/-/g, '') : '';
+        const startDateFormatted = startDate ? startDate.replace(/-/g, '') : '';
+        
         const response = await this.http.get('/uapi/overseas-price/v1/quotations/dailyprice', {
+            headers: { 'tr_id': trId },
             params: {
                 AUTH: '',
                 EXCD: exchangeCode,
                 SYMB: ticker,
                 GUBN: period,
-                BYMD: '', // End date (empty = today)
+                BYMD: endDateFormatted, // End date (YYYYMMDD format)
                 MODP: '1', // 0=unadjusted, 1=adjusted
+                ...(startDateFormatted && { FRMD: startDateFormatted }), // Start date if provided
             },
         });
         return response.data;
@@ -399,17 +417,58 @@ export class KISApiClient {
         quantity: number,
         price: number,
         exchangeCode: string = 'NAS',
-        orderType: string = '00' // 00=Limit
+        orderType: string = '00' // 00=Limit (모의투자는 지정가만 가능)
     ): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        
+        // Parse account number: format is "50157719-01" or "5015771901"
+        const cleanAccountNumber = accountNumber.replace(/-/g, '');
+        const cano = cleanAccountNumber.substring(0, 8);
+        const acntPrdtCd = cleanAccountNumber.substring(8) || '01';
+        
+        // Determine TR_ID and exchange code based on market
+        // 모의투자: VTTT1002U (미국 매수), VTTT1001U (미국 매도)
+        // 실전: TTTT1002U (미국 매수), TTTT1006U (미국 매도)
+        let trId: string;
+        let finalExchangeCode: string;
+        
+        if (exchangeCode === 'NAS' || exchangeCode === 'NYSE' || exchangeCode === 'AMEX') {
+            // 미국 주식
+            trId = mode === 'live' ? 'TTTT1002U' : 'VTTT1002U';
+            finalExchangeCode = exchangeCode === 'NAS' ? 'NASD' : exchangeCode === 'NYSE' ? 'NYSE' : 'AMEX';
+        } else if (exchangeCode === 'HKS') {
+            // 홍콩 주식
+            trId = mode === 'live' ? 'TTTS1002U' : 'VTTS1002U';
+            finalExchangeCode = 'SEHK';
+        } else if (exchangeCode === 'TSE') {
+            // 일본 주식
+            trId = mode === 'live' ? 'TTTS0308U' : 'VTTS0308U';
+            finalExchangeCode = 'TKSE';
+        } else if (exchangeCode === 'SHS') {
+            // 중국 상해 주식
+            trId = mode === 'live' ? 'TTTS0202U' : 'VTTS0202U';
+            finalExchangeCode = 'SHAA';
+        } else {
+            // 기본값: 미국 나스닥
+            trId = mode === 'live' ? 'TTTT1002U' : 'VTTT1002U';
+            finalExchangeCode = 'NASD';
+        }
+        
+        // 모의투자는 지정가(00)만 가능, 시장가는 지원 안됨
+        // 지정가 주문의 경우 현재 가격을 사용
+        const orderPrice = price > 0 ? price.toString() : '0';
+        
         const response = await this.http.post('/uapi/overseas-stock/v1/trading/order', {
-            CANO: accountNumber.substring(0, 8),
-            ACNT_PRDT_CD: accountNumber.substring(8),
-            OVRS_EXCG_CD: exchangeCode,
+            CANO: cano,
+            ACNT_PRDT_CD: acntPrdtCd,
+            OVRS_EXCG_CD: finalExchangeCode,
             PDNO: ticker,
             ORD_QTY: quantity.toString(),
-            OVRS_ORD_UNPR: price.toString(),
+            OVRS_ORD_UNPR: orderPrice, // 시장가의 경우 "0", 지정가는 가격 입력
             ORD_SVR_DVSN_CD: '0', // 0=Buy
-            ORD_DVSN: orderType,
+            ORD_DVSN: '00', // 모의투자는 지정가(00)만 가능
+        }, {
+            headers: { 'tr_id': trId },
         });
         return response.data;
     }
@@ -424,17 +483,59 @@ export class KISApiClient {
         quantity: number,
         price: number,
         exchangeCode: string = 'NAS',
-        orderType: string = '00'
+        orderType: string = '00' // 00=Limit (모의투자는 지정가만 가능)
     ): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        
+        // Parse account number: format is "50157719-01" or "5015771901"
+        const cleanAccountNumber = accountNumber.replace(/-/g, '');
+        const cano = cleanAccountNumber.substring(0, 8);
+        const acntPrdtCd = cleanAccountNumber.substring(8) || '01';
+        
+        // Determine TR_ID and exchange code based on market
+        // 모의투자: VTTT1002U (미국 매수), VTTT1001U (미국 매도)
+        // 실전: TTTT1002U (미국 매수), TTTT1006U (미국 매도)
+        let trId: string;
+        let finalExchangeCode: string;
+        
+        if (exchangeCode === 'NAS' || exchangeCode === 'NYSE' || exchangeCode === 'AMEX') {
+            // 미국 주식
+            trId = mode === 'live' ? 'TTTT1006U' : 'VTTT1001U';
+            finalExchangeCode = exchangeCode === 'NAS' ? 'NASD' : exchangeCode === 'NYSE' ? 'NYSE' : 'AMEX';
+        } else if (exchangeCode === 'HKS') {
+            // 홍콩 주식
+            trId = mode === 'live' ? 'TTTS1001U' : 'VTTS1001U';
+            finalExchangeCode = 'SEHK';
+        } else if (exchangeCode === 'TSE') {
+            // 일본 주식
+            trId = mode === 'live' ? 'TTTS0307U' : 'VTTS0307U';
+            finalExchangeCode = 'TKSE';
+        } else if (exchangeCode === 'SHS') {
+            // 중국 상해 주식
+            trId = mode === 'live' ? 'TTTS1005U' : 'VTTS1005U';
+            finalExchangeCode = 'SHAA';
+        } else {
+            // 기본값: 미국 나스닥
+            trId = mode === 'live' ? 'TTTT1006U' : 'VTTT1001U';
+            finalExchangeCode = 'NASD';
+        }
+        
+        // 모의투자는 지정가(00)만 가능, 시장가는 지원 안됨
+        // 지정가 주문의 경우 현재 가격을 사용
+        const orderPrice = price > 0 ? price.toString() : '0';
+        
         const response = await this.http.post('/uapi/overseas-stock/v1/trading/order', {
-            CANO: accountNumber.substring(0, 8),
-            ACNT_PRDT_CD: accountNumber.substring(8),
-            OVRS_EXCG_CD: exchangeCode,
+            CANO: cano,
+            ACNT_PRDT_CD: acntPrdtCd,
+            OVRS_EXCG_CD: finalExchangeCode,
             PDNO: ticker,
             ORD_QTY: quantity.toString(),
-            OVRS_ORD_UNPR: price.toString(),
-            ORD_SVR_DVSN_CD: '1', // 1=Sell
-            ORD_DVSN: orderType,
+            OVRS_ORD_UNPR: orderPrice, // 시장가의 경우 "0", 지정가는 가격 입력
+            ORD_SVR_DVSN_CD: '0', // 0=Buy (매도도 동일)
+            ORD_DVSN: '00', // 모의투자는 지정가(00)만 가능
+            SLL_TYPE: '00', // 00=매도
+        }, {
+            headers: { 'tr_id': trId },
         });
         return response.data;
     }
@@ -449,7 +550,12 @@ export class KISApiClient {
         startDate: string,
         endDate: string
     ): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        // tr_id: HHDFS00000300 (모의투자), HHDFS76950200 (실거래)
+        const trId = mode === 'live' ? 'HHDFS76950200' : 'HHDFS00000300';
+        
         const response = await this.http.get('/uapi/overseas-stock/v1/trading/inquire-ccld', {
+            headers: { 'tr_id': trId },
             params: {
                 CANO: accountNumber.substring(0, 8),
                 ACNT_PRDT_CD: accountNumber.substring(8),
@@ -469,7 +575,12 @@ export class KISApiClient {
      * 해외주식 인기종목
      */
     async getOverseasPopularStocks(exchangeCode: string = 'NAS'): Promise<any> {
+        const mode = process.env.MODE || 'paper';
+        // tr_id: HHDFS00000300 (모의투자), HHDFS76950200 (실거래)
+        const trId = mode === 'live' ? 'HHDFS76950200' : 'HHDFS00000300';
+        
         const response = await this.http.get('/uapi/overseas-price/v1/quotations/inquire-search', {
+            headers: { 'tr_id': trId },
             params: {
                 AUTH: '',
                 EXCD: exchangeCode,
@@ -491,6 +602,36 @@ export class KISApiClient {
             },
         });
         return response.data;
+    }
+
+    /**
+     * Search overseas stocks by ticker or name
+     * 해외주식 종목검색
+     * Note: KIS API doesn't have a direct search endpoint, so we try to get price for the ticker
+     * and return the stock info if found
+     */
+    async searchOverseasStock(query: string, exchangeCode: string = 'NAS'): Promise<any> {
+        try {
+            // Try to get price for the ticker (assuming query is a ticker)
+            const priceData = await this.getOverseasPrice(query, exchangeCode);
+            
+            if (priceData.output && priceData.output.length > 0) {
+                const stock = priceData.output[0];
+                return {
+                    ticker: stock.symbol || query,
+                    name: stock.hts_kor_isnm || stock.ovrs_nm || query,
+                    nameEn: stock.ovrs_nm || stock.hts_kor_isnm || query,
+                    market: 'US',
+                    price: parseFloat(stock.last || 0),
+                    change_pct: parseFloat(stock.rate || 0),
+                };
+            }
+            
+            return null;
+        } catch (error) {
+            // If ticker lookup fails, return null
+            return null;
+        }
     }
 }
 

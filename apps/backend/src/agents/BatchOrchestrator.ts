@@ -6,8 +6,7 @@ import { OrderExecutor } from '../controller/OrderExecutor';
 import { DatabaseRepository } from '../infrastructure/database/DatabaseRepository';
 import { SettingsRepository } from '../infrastructure/database/SettingsRepository';
 import { DEFAULT_CONSTRAINTS, AIInput } from '../model/AI';
-import { Portfolio } from '../model/Trading';
-import { Market } from '../model/MarketSettings';
+import { Portfolio, Market } from '../model/Trading';
 import { logger } from '../util/logger';
 import { formatKRW } from '../util/formatters';
 
@@ -57,6 +56,19 @@ export class BatchOrchestrator {
                 mode,
                 max_stocks: marketSettings.max_stocks,
             });
+
+            // Inform about mode
+            if (mode === 'paper') {
+                logger.info('📝 PAPER MODE: Using virtual account (모의투자) - Real API calls to KIS virtual trading server', {
+                    mode,
+                    note: 'Orders will be executed in virtual account, not real account',
+                });
+            } else if (mode === 'live') {
+                logger.warn('🔴 LIVE MODE: Real trades will be executed with real money!', {
+                    mode,
+                    warning: 'This will use real money from your account',
+                });
+            }
 
             // Load watchlist for this market
             const watchlist = await this.settingsRepo.getWatchlist(market);
@@ -122,7 +134,8 @@ export class BatchOrchestrator {
             const compressedMarket = await this.contextCompressor.compressMarketData(
                 universe,
                 indexInfo,
-                sentiment
+                sentiment,
+                market
             );
 
             logger.info('✅ Market compression complete', {
@@ -211,7 +224,7 @@ export class BatchOrchestrator {
 
             // Step 6: Execute orders
             logger.info('💰 Step 5/6: Executing orders...');
-            const orderResults = await this.orderExecutor.executeDecisions(runId, validatedDecisions);
+            const orderResults = await this.orderExecutor.executeDecisions(runId, validatedDecisions, market);
 
             const successCount = orderResults.filter((r) => r.status === 'filled').length;
             const failCount = orderResults.filter((r) => r.status === 'failed').length;
@@ -225,12 +238,19 @@ export class BatchOrchestrator {
             // Step 7: Finalize
             logger.info('📝 Step 6/6: Finalizing...');
 
-            // Determine final status
-            if (failCount === 0) {
+            // Determine final status based on order execution results
+            // Only mark as success if there are orders and all succeeded
+            if (orderResults.length === 0) {
+                // No orders to execute (AI made no decisions or all were HOLD)
+                status = 'success';
+            } else if (failCount === 0 && successCount > 0) {
+                // All orders succeeded
                 status = 'success';
             } else if (successCount > 0) {
+                // Some succeeded, some failed
                 status = 'partial';
             } else {
+                // All orders failed
                 status = 'failed';
             }
 
