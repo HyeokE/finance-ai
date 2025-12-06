@@ -6,7 +6,7 @@ export async function fetchBatchSettings() {
     return res.json();
 }
 
-export async function updateBatchSettings(settings: any) {
+export async function updateBatchSettings(settings: Record<string, unknown>) {
     const res = await fetch(`${API_BASE_URL}/api/settings/batch`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -22,7 +22,7 @@ export async function fetchRiskSettings() {
     return res.json();
 }
 
-export async function updateRiskSettings(settings: any) {
+export async function updateRiskSettings(settings: Record<string, unknown>) {
     const res = await fetch(`${API_BASE_URL}/api/settings/risk`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

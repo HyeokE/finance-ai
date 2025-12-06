@@ -116,6 +116,13 @@ export class ContextCompressor {
         try {
             // Get historical data (last 30 days)
             const history = await this.dataCollector.getStockHistory(ticker, 30, market);
+            const historyWindow = history.slice(0, 30);
+            const todayVolume = historyWindow[0]?.volume || 0;
+            const averageVolume = historyWindow.length > 0
+                ? historyWindow.reduce((sum, d) => sum + d.volume, 0) / historyWindow.length
+                : 0;
+            const history7d = historyWindow.slice(0, 7).slice().reverse();
+            const history30d = historyWindow.slice().reverse();
 
             // If no history, create minimal feature with price only
             if (history.length < 2) {
@@ -132,24 +139,26 @@ export class ContextCompressor {
                     price: currentPrice,
                     intraday_return: 0,
                     volume_ratio: 1.0,
+                    today_volume: todayVolume,
+                    average_volume_30d: averageVolume,
                     volatility_20d: 0,
                     ema5_position: 1.0,
                     ema20_position: 1.0,
                     sector: 'unknown',
                     sector_strength: 0.5,
+                    history_7d: history7d,
+                    history_30d: history30d,
                 };
             }
 
             logger.debug(`📊 Processing ${ticker} with ${history.length} days of data`);
 
             // Calculate intraday return
-            const previousClose = history[0]?.close || currentPrice;
+            const previousClose = historyWindow[0]?.close || currentPrice;
             const intradayReturn = (currentPrice - previousClose) / previousClose;
 
             // Calculate volume ratio
-            const avgVolume = history.reduce((sum, d) => sum + d.volume, 0) / history.length;
-            const todayVolume = history[0]?.volume || avgVolume;
-            const volumeRatio = todayVolume / avgVolume;
+            const volumeRatio = averageVolume > 0 ? todayVolume / averageVolume : 1;
 
             // Calculate 20-day volatility
             const returns = history.slice(0, 20).map((d, i) => {
@@ -168,11 +177,15 @@ export class ContextCompressor {
                 price: currentPrice,
                 intraday_return: intradayReturn,
                 volume_ratio: volumeRatio,
+                today_volume: todayVolume,
+                average_volume_30d: averageVolume,
                 volatility_20d: volatility,
                 ema5_position: ema5 > 0 ? currentPrice / ema5 : 1,
                 ema20_position: ema20 > 0 ? currentPrice / ema20 : 1,
                 sector: 'unknown', // TODO: Get sector info
                 sector_strength: 0.5, // TODO: Calculate sector strength
+                history_7d: history7d,
+                history_30d: history30d,
             };
 
             return feature;

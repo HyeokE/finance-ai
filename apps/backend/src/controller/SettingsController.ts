@@ -177,7 +177,7 @@ export const getRecentOrders = async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 50;
         const { data, error } = await getSettingsRepo()['db']
             .from('orders')
-            .select('*, runs(started_at, status, market)')
+            .select('id, run_id, ticker, direction, order_type, requested_qty, requested_price, filled_qty, avg_filled_price, status, broker_order_id, error_code, error_message, created_at, updated_at, runs(id, started_at, status, market)')
             .order('created_at', { ascending: false })
             .limit(limit);
 

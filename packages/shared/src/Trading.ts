@@ -104,18 +104,27 @@ export interface OrderResult {
 /**
  * Stock feature for AI input
  */
+export interface PriceVolumePoint {
+    close: number;
+    volume: number;
+}
+
 export interface StockFeature {
     ticker: string;
     name: string;
     price: number;
     intraday_return: number; // Today's return
     volume_ratio: number; // Today's volume / avg volume
+    today_volume: number; // Latest trading volume
+    average_volume_30d: number; // 30-day average volume
     volatility_20d: number; // 20-day volatility
     ema5_position: number; // Current price / EMA5
     ema20_position: number; // Current price / EMA20
     sector: string;
     sector_strength: number; // Sector relative strength (0-1)
     market_cap_rank?: number;
+    history_7d: PriceVolumePoint[]; // Last ~7 trading days (chronological)
+    history_30d: PriceVolumePoint[]; // Last ~30 trading days (chronological)
 }
 
 /**

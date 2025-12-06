@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { KISApiClient } from '../infrastructure/api/KISApiClient';
 import { KISApiFactory } from '../infrastructure/api/KISApiFactory';
 import { AccountBalance, Position, StockFeature, Market, EXCHANGE_CODES } from '../model/Trading';
@@ -128,20 +129,93 @@ export class DataCollector {
         try {
             logger.info('Collecting sentiment data...');
 
-            // For now, return basic sentiment
-            // TODO: Add external APIs for fear/greed index, VIX, etc.
             const sentiment: Sentiment = {
                 foreign_net_buy_krw: 0,
                 institution_net_buy_krw: 0,
             };
 
-            logger.info('Sentiment data collected');
+            const fearGreedIndex = await this.fetchFearGreedIndex();
+            if (fearGreedIndex !== undefined) {
+                sentiment.fear_greed_index = fearGreedIndex;
+            }
+
+            logger.info('Sentiment data collected', {
+                fear_greed_index: sentiment.fear_greed_index,
+            });
 
             return sentiment;
         } catch (error) {
             logger.error('Failed to collect sentiment', { error });
             throw new ApiError('Failed to collect sentiment', undefined, error);
         }
+    }
+
+    /**
+     * Fetch CNN Fear & Greed index (or fallback to env override)
+     */
+    private async fetchFearGreedIndex(): Promise<number | undefined> {
+        const apiUrl = process.env.FEAR_GREED_API_URL || 'https://production.dataviz.cnn.io/index/fearandgreed/';
+        const fallbackEnv = process.env.FEAR_GREED_INDEX;
+        const fallback = fallbackEnv !== undefined ? parseFloat(fallbackEnv) : undefined;
+
+        try {
+            const { data } = await axios.get(apiUrl, { timeout: 5000 });
+            const parsed = this.parseFearGreedResponse(data);
+            if (parsed !== undefined) {
+                return parsed;
+            }
+
+            if (Number.isFinite(fallback)) {
+                logger.warn('Fear & Greed API returned no score, using fallback env value', { apiUrl });
+                return fallback;
+            }
+
+            logger.warn('Fear & Greed API returned no score and no fallback available', {
+                apiUrl,
+                response_keys: data ? Object.keys(data) : [],
+            });
+        } catch (error: any) {
+            if (Number.isFinite(fallback)) {
+                logger.warn('Failed to fetch fear & greed index, using fallback env value', {
+                    apiUrl,
+                    error: error?.message || error,
+                });
+                return fallback;
+            }
+
+            logger.warn('Failed to fetch fear & greed index', {
+                apiUrl,
+                error: error?.message || error,
+            });
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Parse fear/greed score from various API response shapes
+     */
+    private parseFearGreedResponse(payload: any): number | undefined {
+        const candidates = [
+            payload?.fear_and_greed?.score,
+            payload?.fear_and_greed?.now?.score,
+            payload?.fear_and_greed?.now?.value,
+            payload?.fearAndGreed?.score,
+            payload?.fgi?.now?.value,
+            payload?.now?.value,
+            payload?.score,
+            payload?.value,
+            Array.isArray(payload?.data) ? payload.data[0]?.score ?? payload.data[0]?.value : undefined,
+        ];
+
+        for (const candidate of candidates) {
+            const parsed = typeof candidate === 'string' ? parseFloat(candidate) : candidate;
+            if (typeof parsed === 'number' && Number.isFinite(parsed)) {
+                return Math.max(0, Math.min(100, parsed));
+            }
+        }
+
+        return undefined;
     }
 
     /**

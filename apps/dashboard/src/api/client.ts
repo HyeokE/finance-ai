@@ -50,6 +50,7 @@ export interface DashboardOverview {
 
 export interface Order {
     id: string;
+    run_id?: string;
     ticker: string;
     direction: 'buy' | 'sell';
     order_type?: string;
@@ -119,6 +120,15 @@ export const batchApi = {
         const res = await apiClient.post(`/api/batch/run/${market}`, {}, {
             timeout: 60000, // 60 seconds
         });
+        return res.data;
+    },
+
+    getStatus: async (runId: string): Promise<{
+        run: { id: string; status: string; started_at: string; market?: string };
+        decision_count: number;
+        decisions: DecisionResponse[];
+    }> => {
+        const res = await apiClient.get(`/api/batch/status/${runId}`);
         return res.data;
     },
 };

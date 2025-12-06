@@ -68,6 +68,7 @@ export class AIDecisionEngine {
 
             const systemPrompt = getSystemPrompt();
             const userContext = this.formatInputContext(input);
+            logger.debug('AI decision full input payload', { ai_input: userContext });
 
             // Call AI provider with retry logic
             const responseText = await retryWithBackoff(
@@ -80,6 +81,7 @@ export class AIDecisionEngine {
             const output = this.parseAIResponse(responseText);
 
             logger.info('AI decisions received', output);
+            logger.debug('AI decision full output payload', { ai_output: output });
 
             // Validate output
             this.validateOutput(output);
@@ -121,6 +123,10 @@ export class AIDecisionEngine {
                 sentiment: {
                     foreign_net_buy: input.market.sentiment.foreign_net_buy_krw,
                     institution_net_buy: input.market.sentiment.institution_net_buy_krw,
+                    fear_greed_index: input.market.sentiment.fear_greed_index,
+                    vix: input.market.sentiment.vix,
+                    short_selling_ratio: input.market.sentiment.short_selling_ratio,
+                    credit_balance_change_pct: input.market.sentiment.credit_balance_change_pct,
                 },
             },
             stocks: input.stocks.map((s) => ({
@@ -128,9 +134,13 @@ export class AIDecisionEngine {
                 price: s.price,
                 intraday_return: s.intraday_return,
                 volume_ratio: s.volume_ratio,
+                today_volume: s.today_volume,
+                average_volume_30d: s.average_volume_30d,
                 volatility: s.volatility_20d,
                 ema5_position: s.ema5_position,
                 ema20_position: s.ema20_position,
+                history_7d: s.history_7d,
+                history_30d: s.history_30d,
             })),
             constraints: input.constraints,
         };
