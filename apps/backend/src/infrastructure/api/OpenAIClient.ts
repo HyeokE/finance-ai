@@ -1,12 +1,16 @@
 import OpenAI from 'openai';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { IAIProvider } from './IAIProvider';
 
 /**
  * OpenAI API Client Wrapper
- * Provides simplified interface for GPT-4o calls
+ * Provides simplified interface for GPT calls
  */
-export class OpenAIClient {
-    constructor(private readonly openai: OpenAI) { }
+export class OpenAIClient implements IAIProvider {
+    constructor(
+        private readonly openai: OpenAI,
+        private readonly modelName: string = 'gpt-4o'
+    ) { }
 
     /**
      * Call GPT-4o with chat completion
@@ -21,7 +25,7 @@ export class OpenAIClient {
         } = {}
     ): Promise<string> {
         const {
-            model = 'gpt-5.1-2025-11-13',
+            model = this.modelName,
             temperature = 0.7,
             jsonMode = false,
             maxTokens,
@@ -50,7 +54,7 @@ export class OpenAIClient {
     }
 
     /**
-     * Get trading decision from GPT-4o
+     * Get trading decision from GPT
      * Convenience method for AI decision engine
      */
     async getTradingDecision(systemPrompt: string, context: any): Promise<string> {
@@ -66,7 +70,7 @@ export class OpenAIClient {
         ];
 
         return this.chat(messages, {
-            model: 'gpt-5.1',
+            model: this.modelName,
             temperature: 0.7,
             jsonMode: true,
         });
@@ -78,7 +82,7 @@ export class OpenAIClient {
     async testConnection(): Promise<boolean> {
         try {
             await this.chat([{ role: 'user', content: 'Hello' }], {
-                model: 'gpt-5.1',
+                model: this.modelName,
                 maxTokens: 10,
             });
             console.log('✅ OpenAI API connection test successful');

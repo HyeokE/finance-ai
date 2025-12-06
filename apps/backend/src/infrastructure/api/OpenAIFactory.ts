@@ -21,8 +21,10 @@ export class OpenAIFactory implements ApiFactory<OpenAIClient> {
             maxRetries: config.retryAttempts || DEFAULT_API_CONFIG.retryAttempts,
         });
 
-        console.log('✅ OpenAI client initialized');
+        const modelName = process.env.OPENAI_MODEL || 'gpt-4o';
 
-        return new OpenAIClient(openai);
+        console.log(`✅ OpenAI client initialized (model: ${modelName})`);
+
+        return new OpenAIClient(openai, modelName);
     }
 }

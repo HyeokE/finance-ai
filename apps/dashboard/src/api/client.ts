@@ -175,4 +175,41 @@ export const watchlistApi = {
     },
 };
 
+// ===================
+// Stock Search
+// ===================
+
+export interface StockSearchResult {
+    ticker: string;
+    name: string;
+    nameEn?: string;
+    market: string;
+    price?: number;
+    change_pct?: number;
+    volume?: number;
+}
+
+export const stocksApi = {
+    search: async (query: string, market: string = 'DOMESTIC'): Promise<StockSearchResult[]> => {
+        const res = await apiClient.get('/api/stocks/search', {
+            params: { query, market }
+        });
+        return res.data.data;
+    },
+
+    getPopular: async (market: string = 'DOMESTIC', limit: number = 30): Promise<StockSearchResult[]> => {
+        const res = await apiClient.get('/api/stocks/popular', {
+            params: { market, limit }
+        });
+        return res.data.data;
+    },
+
+    getDetail: async (ticker: string, market: string = 'DOMESTIC'): Promise<StockSearchResult> => {
+        const res = await apiClient.get(`/api/stocks/${ticker}`, {
+            params: { market }
+        });
+        return res.data.data;
+    },
+};
+
 export default apiClient;

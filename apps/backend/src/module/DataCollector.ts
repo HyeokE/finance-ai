@@ -6,6 +6,7 @@ import { logger } from '../util/logger';
 import { retryWithBackoff } from '../util/retry';
 import { ApiError } from '../util/errors';
 import { getToday, getDaysAgo } from '../util/formatters';
+import { kisRateLimiter } from '../util/rateLimiter';
 
 /**
  * Data Collector Module
@@ -30,6 +31,7 @@ export class DataCollector {
         try {
             logger.info('Collecting account data...');
 
+            await kisRateLimiter.waitIfNeeded();
             const balanceData = await retryWithBackoff(() =>
                 this.kisApi.getAccountBalance(this.accountNumber)
             );
@@ -86,10 +88,12 @@ export class DataCollector {
         try {
             logger.info('Collecting index info...');
 
-            const [kospiData, kosdaqData] = await Promise.all([
-                retryWithBackoff(() => this.kisApi.getIndexInfo('0001')), // KOSPI
-                retryWithBackoff(() => this.kisApi.getIndexInfo('1001')), // KOSDAQ
-            ]);
+            // Fetch indices sequentially with rate limiting
+            await kisRateLimiter.waitIfNeeded();
+            const kospiData = await retryWithBackoff(() => this.kisApi.getIndexInfo('0001')); // KOSPI
+
+            await kisRateLimiter.waitIfNeeded();
+            const kosdaqData = await retryWithBackoff(() => this.kisApi.getIndexInfo('1001')); // KOSDAQ
 
             const kospiOutput = kospiData.output || {};
             const kosdaqOutput = kosdaqData.output || {};
@@ -172,6 +176,7 @@ export class DataCollector {
             // Batch requests with rate limiting
             for (const ticker of tickers) {
                 try {
+                    await kisRateLimiter.waitIfNeeded();
                     const priceData = await this.kisApi.getCurrentPrice(ticker);
                     const output = priceData.output || {};
                     const price = parseFloat(output.stck_prpr || 0);
@@ -179,9 +184,6 @@ export class DataCollector {
                     if (price > 0) {
                         prices.set(ticker, price);
                     }
-
-                    // Small delay to avoid rate limiting
-                    await new Promise((resolve) => setTimeout(resolve, 100));
                 } catch (error) {
                     logger.warn('Failed to get price for ticker', { ticker, error });
                 }
@@ -207,15 +209,78 @@ export class DataCollector {
             const endDate = getToday();
             const startDate = getDaysAgo(days);
 
+            logger.debug(`📊 Fetching history for ${ticker}`, {
+                ticker,
+                startDate,
+                endDate,
+                days,
+            });
+
+            await kisRateLimiter.waitIfNeeded();
             const historyData = await retryWithBackoff(() =>
                 this.kisApi.getDailyPrices(ticker, startDate, endDate)
             );
 
             const output = historyData.output || [];
+            const output2 = historyData.output2 || [];
 
-            return output.map((item: any) => ({
-                close: parseFloat(item.stck_clpr),
-                volume: parseFloat(item.acml_vol),
+            logger.debug(`📈 History API response for ${ticker}`, {
+                ticker,
+                output_length: output.length,
+                output2_length: output2.length,
+                rt_cd: historyData.rt_cd,
+                msg_cd: historyData.msg_cd,
+                msg1: historyData.msg1,
+                response_keys: Object.keys(historyData),
+            });
+
+            // Try output first, fallback to output2 if empty
+            let dataArray = output;
+            if (output.length === 0 && output2.length > 0) {
+                logger.info(`📊 Using output2 for ${ticker} (output was empty)`, {
+                    output2_length: output2.length,
+                });
+                dataArray = output2;
+            }
+
+            // If still empty, try a shorter date range (7 days)
+            if (dataArray.length === 0 && days > 7) {
+                logger.warn(`⚠️ Empty history data, retrying with 7 days for ${ticker}`);
+                const shortStartDate = getDaysAgo(7);
+
+                await kisRateLimiter.waitIfNeeded();
+                const retryData = await retryWithBackoff(() =>
+                    this.kisApi.getDailyPrices(ticker, shortStartDate, endDate)
+                );
+
+                dataArray = retryData.output || retryData.output2 || [];
+                logger.debug(`📈 Retry with 7 days result`, {
+                    ticker,
+                    length: dataArray.length,
+                    rt_cd: retryData.rt_cd,
+                    msg_cd: retryData.msg_cd,
+                });
+            }
+
+            if (dataArray.length === 0) {
+                logger.warn(`⚠️ No history data available for ${ticker}`, {
+                    ticker,
+                    startDate,
+                    endDate,
+                    days,
+                    possible_reasons: [
+                        'Market closed (requires 09:00-15:30 KST)',
+                        'Paper trading mode limitation',
+                        'Invalid ticker or delisted stock',
+                        'Weekend/holiday (no trading data)'
+                    ],
+                });
+                return [];
+            }
+
+            return dataArray.map((item: any) => ({
+                close: parseFloat(item.stck_clpr || item.stck_prpr || 0),
+                volume: parseFloat(item.acml_vol || item.acml_tr_pbmn || 0),
             }));
         } catch (error) {
             logger.warn('Failed to get stock history', { ticker, error });

@@ -1,21 +1,59 @@
-import { OpenAIClient } from '../infrastructure/api/OpenAIClient';
+import { IAIProvider } from '../infrastructure/api/IAIProvider';
 import { OpenAIFactory } from '../infrastructure/api/OpenAIFactory';
+import { GeminiApiFactory } from '../infrastructure/api/GeminiApiFactory';
 import { AIInput, AIOutput, Decision } from '../model/AI';
 import { getSystemPrompt } from './SystemPrompt';
 import { logger } from '../util/logger';
 import { AIError } from '../util/errors';
 import { retryWithBackoff } from '../util/retry';
 
+type AIProviderType = 'openai' | 'gemini';
+
 /**
  * AI Decision Engine
- * Uses GPT-4o to make trading decisions based on market context
+ * Uses AI providers (OpenAI GPT or Google Gemini) to make trading decisions
  */
 export class AIDecisionEngine {
-    private openaiClient: OpenAIClient;
+    private aiProvider: IAIProvider;
+    private providerType: AIProviderType;
 
     constructor() {
-        const factory = new OpenAIFactory();
-        this.openaiClient = factory.create();
+        this.providerType = this.getProviderFromEnv();
+        this.aiProvider = this.createProvider(this.providerType);
+
+        logger.info(`AI Decision Engine initialized with ${this.providerType} provider`);
+    }
+
+    /**
+     * Get AI provider type from environment
+     */
+    private getProviderFromEnv(): AIProviderType {
+        const provider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
+
+        if (provider !== 'openai' && provider !== 'gemini') {
+            logger.warn(`Invalid AI_PROVIDER: ${provider}, defaulting to openai`);
+            return 'openai';
+        }
+
+        return provider as AIProviderType;
+    }
+
+    /**
+     * Create AI provider instance based on type
+     */
+    private createProvider(type: AIProviderType): IAIProvider {
+        switch (type) {
+            case 'openai':
+                const openaiFactory = new OpenAIFactory();
+                return openaiFactory.create();
+
+            case 'gemini':
+                const geminiFactory = new GeminiApiFactory();
+                return geminiFactory.create();
+
+            default:
+                throw new AIError(`Unknown AI provider type: ${type}`);
+        }
     }
 
     /**
@@ -31,9 +69,9 @@ export class AIDecisionEngine {
             const systemPrompt = getSystemPrompt();
             const userContext = this.formatInputContext(input);
 
-            // Call GPT-4o with retry logic
+            // Call AI provider with retry logic
             const responseText = await retryWithBackoff(
-                () => this.openaiClient.getTradingDecision(systemPrompt, userContext),
+                () => this.aiProvider.getTradingDecision(systemPrompt, userContext),
                 3,
                 2000
             );
@@ -182,11 +220,18 @@ export class AIDecisionEngine {
      */
     async testConnection(): Promise<boolean> {
         try {
-            await this.openaiClient.testConnection();
+            await this.aiProvider.testConnection();
             return true;
         } catch (error) {
             logger.error('AI connection test failed', { error });
             return false;
         }
+    }
+
+    /**
+     * Get current provider type
+     */
+    getProviderType(): AIProviderType {
+        return this.providerType;
     }
 }

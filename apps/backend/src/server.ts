@@ -28,6 +28,11 @@ import {
   toggleWatchlistItem,
 } from './controller/WatchlistController';
 import { runBatchManually } from './controller/BatchController';
+import {
+  searchStocks,
+  getPopularStocks,
+  getStockDetail,
+} from './controller/StockController';
 
 // Load .env from project root (monorepo)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -155,6 +160,11 @@ app.patch('/api/watchlist/:id/toggle', toggleWatchlistItem);
 
 // Batch Operations
 app.post('/api/batch/run/:market', runBatchManually);
+
+// Stock Search
+app.get('/api/stocks/search', searchStocks);
+app.get('/api/stocks/popular', getPopularStocks);
+app.get('/api/stocks/:ticker', getStockDetail);
 
 // ===================================
 // Error Handling

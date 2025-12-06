@@ -11,6 +11,7 @@
     },
     "dependencies": {
         "@auto-finance/shared": "workspace:^",
+        "@google/generative-ai": "^0.24.1",
         "@supabase/supabase-js": "^2.86.2",
         "axios": "^1.13.2",
         "cors": "^2.8.5",

@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Market, MarketBatchSettings, MarketRiskSettings } from '@auto-finance/shared';
 import {
   marketSettingsApi,
   batchApi,
   dashboardApi,
   watchlistApi,
+  stocksApi,
   type DashboardOverview,
   type Order,
   type DecisionResponse,
   type WatchlistItem,
+  type StockSearchResult,
 } from './api/client';
 import { MARKET_INFO } from './shared/lib/constants';
 
@@ -21,11 +23,7 @@ function MarketCard({ market }: { market: Market }) {
 
   const info = MARKET_INFO[market];
 
-  useEffect(() => {
-    loadSettings();
-  }, [market]);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const [batchData, riskData] = await Promise.all([
         marketSettingsApi.getBatchSettings(market),
@@ -38,7 +36,11 @@ function MarketCard({ market }: { market: Market }) {
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
-  };
+  }, [market]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleToggle = async () => {
     if (!batchSettings) return;
@@ -154,6 +156,10 @@ function App() {
   const [selectedMarket, setSelectedMarket] = useState<string>('DOMESTIC');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newStock, setNewStock] = useState({ ticker: '', name: '', notes: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<StockSearchResult[]>([]);
+  const [popularStocks, setPopularStocks] = useState<StockSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     loadOverview();
@@ -207,6 +213,44 @@ function App() {
     }
   };
 
+  const loadPopularStocks = async () => {
+    try {
+      const data = await stocksApi.getPopular(selectedMarket, 30);
+      setPopularStocks(data);
+    } catch (error) {
+      console.error('Failed to load popular stocks:', error);
+    }
+  };
+
+  const handleSearchStocks = async (query: string) => {
+    setSearchQuery(query);
+    if (!query || query.length < 1) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await stocksApi.search(query, selectedMarket);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Failed to search stocks:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectStock = (stock: StockSearchResult) => {
+    setNewStock({
+      ticker: stock.ticker,
+      name: stock.name,
+      notes: ''
+    });
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
   const handleAddStock = async () => {
     try {
       await watchlistApi.add({
@@ -216,10 +260,13 @@ function App() {
         notes: newStock.notes,
       });
       setNewStock({ ticker: '', name: '', notes: '' });
+      setSearchQuery('');
+      setSearchResults([]);
       setShowAddModal(false);
       loadWatchlist();
     } catch (error) {
       console.error('Failed to add stock:', error);
+      alert('Failed to add stock. Please try again.');
     }
   };
 
@@ -288,7 +335,13 @@ function App() {
                   <option value="JP">🇯🇵 JP</option>
                   <option value="CN">🇨🇳 CN</option>
                 </select>
-                <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                <button
+                  onClick={() => {
+                    setShowAddModal(true);
+                    loadPopularStocks();
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
                   + Add Stock
                 </button>
               </div>
@@ -326,13 +379,22 @@ function App() {
 
         {/* Add Stock Modal */}
         {showAddModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-bold mb-4">Add Stock to Watchlist</h3>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Market</label>
-                  <select value={selectedMarket} onChange={(e) => setSelectedMarket(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md">
+                  <select
+                    value={selectedMarket}
+                    onChange={(e) => {
+                      setSelectedMarket(e.target.value);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      loadPopularStocks();
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
                     <option value="DOMESTIC">🇰🇷 Korea</option>
                     <option value="US">🇺🇸 US</option>
                     <option value="HK">🇭🇰 HK</option>
@@ -340,22 +402,126 @@ function App() {
                     <option value="CN">🇨🇳 CN</option>
                   </select>
                 </div>
+
+                {/* Stock Search */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Search Stock</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchStocks(e.target.value)}
+                      placeholder="Search by ticker or name (e.g., 005930, 삼성, Samsung)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    {isSearching && (
+                      <div className="absolute right-3 top-2.5 text-gray-400">
+                        Searching...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Search Results */}
+                  {searchResults.length > 0 && (
+                    <div className="mt-2 border border-gray-300 rounded-md max-h-60 overflow-y-auto">
+                      {searchResults.map((stock) => (
+                        <div
+                          key={stock.ticker}
+                          onClick={() => handleSelectStock(stock)}
+                          className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0"
+                        >
+                          <div className="font-medium">{stock.ticker} - {stock.name}</div>
+                          {stock.nameEn && <div className="text-sm text-gray-500">{stock.nameEn}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Popular Stocks - shown when no search query */}
+                  {!searchQuery && popularStocks.length > 0 && (
+                    <div className="mt-2">
+                      <div className="text-xs font-medium text-gray-500 mb-2">Popular Stocks (By Volume)</div>
+                      <div className="border border-gray-300 rounded-md max-h-60 overflow-y-auto">
+                        {popularStocks.slice(0, 10).map((stock) => (
+                          <div
+                            key={stock.ticker}
+                            onClick={() => handleSelectStock(stock)}
+                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b last:border-b-0 flex justify-between items-center"
+                          >
+                            <div>
+                              <div className="font-medium text-sm">{stock.ticker} - {stock.name}</div>
+                            </div>
+                            {stock.change_pct !== undefined && (
+                              <span className={`text-xs ${stock.change_pct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {stock.change_pct >= 0 ? '+' : ''}{stock.change_pct.toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Stock Details */}
+                {newStock.ticker && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <div className="text-sm font-medium text-blue-900 mb-1">Selected Stock</div>
+                    <div className="text-lg font-bold text-blue-900">{newStock.ticker} - {newStock.name}</div>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ticker</label>
-                  <input type="text" value={newStock.ticker} onChange={(e) => setNewStock({ ...newStock, ticker: e.target.value })} placeholder="e.g., 005930" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                  <input
+                    type="text"
+                    value={newStock.ticker}
+                    onChange={(e) => setNewStock({ ...newStock, ticker: e.target.value })}
+                    placeholder="e.g., 005930"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                    readOnly={!!newStock.ticker}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <input type="text" value={newStock.name} onChange={(e) => setNewStock({ ...newStock, name: e.target.value })} placeholder="e.g., Samsung Electronics" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                  <input
+                    type="text"
+                    value={newStock.name}
+                    onChange={(e) => setNewStock({ ...newStock, name: e.target.value })}
+                    placeholder="e.g., Samsung Electronics"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
-                  <input type="text" value={newStock.notes} onChange={(e) => setNewStock({ ...newStock, notes: e.target.value })} placeholder="e.g., Tech giant" className="w-full px-3 py-2 border border-gray-300 rounded-md" />
+                  <input
+                    type="text"
+                    value={newStock.notes}
+                    onChange={(e) => setNewStock({ ...newStock, notes: e.target.value })}
+                    placeholder="e.g., Tech giant"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  />
                 </div>
               </div>
               <div className="flex gap-2 mt-6">
-                <button onClick={() => setShowAddModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-                <button onClick={handleAddStock} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Add</button>
+                <button
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setNewStock({ ticker: '', name: '', notes: '' });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddStock}
+                  disabled={!newStock.ticker || !newStock.name}
+                  className={`flex-1 px-4 py-2 rounded-md ${newStock.ticker && newStock.name ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                >
+                  Add
+                </button>
               </div>
             </div>
           </div>

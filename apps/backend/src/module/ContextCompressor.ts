@@ -28,23 +28,59 @@ export class ContextCompressor {
 
             // Collect prices
             const prices = await this.dataCollector.collectStockPrices(tickers);
+            logger.info('📈 Stock prices collected', {
+                total_tickers: tickers.length,
+                prices_found: prices.size,
+                tickers_with_prices: Array.from(prices.keys()),
+            });
 
             // Generate features for each stock
             const features: StockFeature[] = [];
+            let successCount = 0;
+            let failureCount = 0;
+            const failureReasons: Record<string, number> = {};
 
             for (const ticker of tickers) {
                 const price = prices.get(ticker);
-                if (!price) continue;
+                if (!price) {
+                    logger.warn(`⚠️ No price data for ticker ${ticker}`);
+                    failureCount++;
+                    failureReasons['no_price'] = (failureReasons['no_price'] || 0) + 1;
+                    continue;
+                }
 
                 try {
                     const feature = await this.generateStockFeature(ticker, price);
                     if (feature) {
                         features.push(feature);
+                        successCount++;
+                        logger.debug(`✅ Feature generated for ${ticker}`, {
+                            price,
+                            intraday_return: feature.intraday_return.toFixed(4),
+                            volume_ratio: feature.volume_ratio.toFixed(2),
+                        });
+                    } else {
+                        failureCount++;
+                        failureReasons['insufficient_history'] = (failureReasons['insufficient_history'] || 0) + 1;
+                        logger.warn(`⚠️ Feature generation returned null for ${ticker}`);
                     }
-                } catch (error) {
-                    logger.warn('Failed to generate feature for ticker', { ticker, error });
+                } catch (error: any) {
+                    failureCount++;
+                    const errorType = error?.message?.includes('초과') ? 'rate_limit' : 'unknown_error';
+                    failureReasons[errorType] = (failureReasons[errorType] || 0) + 1;
+                    logger.warn(`❌ Failed to generate feature for ${ticker}`, {
+                        ticker,
+                        error: error?.message || error
+                    });
                 }
             }
+
+            logger.info('📊 Feature generation summary', {
+                success: successCount,
+                failures: failureCount,
+                failure_breakdown: failureReasons,
+                success_rate: `${((successCount / tickers.length) * 100).toFixed(1)}%`,
+            });
 
             // Sort by feature score (combination of volume and volatility)
             features.sort((a, b) => {
@@ -81,8 +117,15 @@ export class ContextCompressor {
             const history = await this.dataCollector.getStockHistory(ticker, 30);
 
             if (history.length < 2) {
+                logger.warn(`📉 Insufficient history data for ${ticker}`, {
+                    ticker,
+                    history_length: history.length,
+                    required: 2,
+                });
                 return null;
             }
+
+            logger.debug(`📊 Processing ${ticker} with ${history.length} days of data`);
 
             // Calculate intraday return
             const previousClose = history[0]?.close || currentPrice;

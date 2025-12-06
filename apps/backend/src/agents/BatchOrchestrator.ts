@@ -114,11 +114,22 @@ export class BatchOrchestrator {
                 universe = this.contextCompressor.filterStockUniverse(topTickers, heldTickers, marketSettings.max_stocks);
             }
 
+            logger.info('🔄 Starting market data compression', {
+                universe_size: universe.length,
+                universe_sample: universe.slice(0, 5),
+            });
+
             const compressedMarket = await this.contextCompressor.compressMarketData(
                 universe,
                 indexInfo,
                 sentiment
             );
+
+            logger.info('✅ Market compression complete', {
+                input_tickers: universe.length,
+                output_features: compressedMarket.universe_features.length,
+                compression_rate: `${((compressedMarket.universe_features.length / universe.length) * 100).toFixed(1)}%`,
+            });
 
             // Save market snapshot
             await this.db.saveMarketSnapshot(runId, compressedMarket);
@@ -138,16 +149,55 @@ export class BatchOrchestrator {
                 constraints: DEFAULT_CONSTRAINTS,
             };
 
-            const aiOutput = await this.aiEngine.getDecisions(aiInput);
-
-            logger.info('AI decisions received', {
-                total_decisions: aiOutput.decisions.length,
-                market_view: aiOutput.market_view,
-                risk_level: aiOutput.risk_level,
+            logger.info('🔍 AI Input prepared', {
+                provider: this.aiEngine.getProviderType(),
+                stocks_to_analyze: aiInput.stocks.length,
+                portfolio_cash_pct: (portfolio.cash_weight * 100).toFixed(1) + '%',
+                portfolio_positions: portfolio.positions.length,
+                stocks_sample: aiInput.stocks.slice(0, 3).map(s => ({
+                    ticker: s.ticker,
+                    price: s.price,
+                    return: (s.intraday_return * 100).toFixed(2) + '%',
+                })),
             });
 
+            if (aiInput.stocks.length === 0) {
+                logger.warn('⚠️ No stocks to analyze! AI will likely make no decisions.');
+            }
+
+            const aiOutput = await this.aiEngine.getDecisions(aiInput);
+
+            logger.info('🤖 AI decisions received', {
+                total_decisions: aiOutput.decisions.length,
+                market_view: aiOutput.market_view.substring(0, 100) + '...',
+                risk_level: aiOutput.risk_level,
+                decisions_breakdown: {
+                    BUY: aiOutput.decisions.filter(d => d.action === 'BUY').length,
+                    SELL: aiOutput.decisions.filter(d => d.action === 'SELL').length,
+                    HOLD: aiOutput.decisions.filter(d => d.action === 'HOLD').length,
+                },
+            });
+
+            if (aiOutput.decisions.length === 0) {
+                logger.warn('⚠️ AI made zero decisions', {
+                    possible_reasons: [
+                        'No stocks provided to analyze',
+                        'Market conditions not favorable',
+                        'Risk constraints too tight',
+                        'AI chose to stay in cash',
+                    ],
+                });
+            }
+
             // Save decisions
-            await this.db.saveDecisions(runId, aiOutput.decisions);
+            if (aiOutput.decisions.length > 0) {
+                await this.db.saveDecisions(runId, aiOutput.decisions);
+                logger.info('💾 Saved decisions to database', {
+                    count: aiOutput.decisions.length,
+                });
+            } else {
+                logger.info('💾 No decisions to save (AI chose not to trade)');
+            }
 
             // Step 5: Validate decisions
             logger.info('✅ Step 4/6: Validating decisions...');
