@@ -78,27 +78,86 @@ jobs:
         env:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          # KIS API
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          KIS_ACCOUNT_NUMBER: ${{ secrets.KIS_ACCOUNT_NUMBER }}
+          KIS_BASE_URL_DEV: ${{ secrets.KIS_BASE_URL_DEV }}
+          KIS_BASE_URL_PROD: ${{ secrets.KIS_BASE_URL_PROD }}
+          KIS_API_VERSION: ${{ secrets.KIS_API_VERSION }}
+          # AI Provider
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          # Supabase
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Server Config
+          PORT: ${{ secrets.PORT }}
+          NODE_ENV: ${{ secrets.NODE_ENV }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+          # Feature Flags
+          ENABLE_SCHEDULER: ${{ secrets.ENABLE_SCHEDULER }}
+          ENABLE_DISCORD_ALERTS: ${{ secrets.ENABLE_DISCORD_ALERTS }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
+          # Create .env file locally
+          cat > .env << 'ENV_EOF'
+          # Korea Investment & Securities API
+          KIS_APP_KEY=${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET=${{ secrets.KIS_APP_SECRET }}
+          KIS_ACCOUNT_NUMBER=${{ secrets.KIS_ACCOUNT_NUMBER }}
+          KIS_BASE_URL_DEV=${{ secrets.KIS_BASE_URL_DEV }}
+          KIS_BASE_URL_PROD=${{ secrets.KIS_BASE_URL_PROD }}
+          KIS_API_VERSION=${{ secrets.KIS_API_VERSION }}
+
+          # AI Provider Configuration
+          AI_PROVIDER=${{ secrets.AI_PROVIDER }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL=${{ secrets.OPENAI_MODEL }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
+
+          # Supabase Database
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+
+          # Trading Configuration
+          MODE=live
+
+          # Server Configuration
+          PORT=${{ secrets.PORT }}
+          NODE_ENV=production
+
+          # Logging
+          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
+
+          # Feature Flags
+          ENABLE_SCHEDULER=${{ secrets.ENABLE_SCHEDULER }}
+          ENABLE_DISCORD_ALERTS=${{ secrets.ENABLE_DISCORD_ALERTS }}
+          DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}
+          ENV_EOF
+
           # Create deployment directory
           ssh $ORACLE_USER@$ORACLE_HOST "mkdir -p ~/auto-finance"
-          
-          # Upload files
+
+          # Upload files including .env
           rsync -avz --delete \
             --exclude 'node_modules' \
             --exclude '.git' \
             ./ $ORACLE_USER@$ORACLE_HOST:~/auto-finance/
-          
+
           # Install dependencies and restart service
           ssh $ORACLE_USER@$ORACLE_HOST << 'EOF'
             cd ~/auto-finance
-            
-            # Set production environment
-            echo "MODE=live" >> .env
-            echo "KIS_BASE_URL_PROD=https://openapi.koreainvestment.com:9443" >> .env
-            
+
             # Install dependencies
             pnpm install --production
-            
+
             # Restart PM2 service
             cd apps/backend
             pm2 restart auto-finance || pm2 start dist/server.js --name auto-finance
