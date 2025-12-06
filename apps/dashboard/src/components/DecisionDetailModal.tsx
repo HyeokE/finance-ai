@@ -1,4 +1,8 @@
 import type { DecisionResponse } from '../api/client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
 
 type Props = {
   decision: DecisionResponse | null;
@@ -6,6 +10,7 @@ type Props = {
 };
 
 export function DecisionDetailModal({ decision, onClose }: Props) {
+  const open = !!decision;
   if (!decision) return null;
 
   const formatNumber = (value?: number | null) => (typeof value === 'number' ? value.toLocaleString() : '-');
@@ -16,95 +21,68 @@ export function DecisionDetailModal({ decision, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">AI 의사결정 상세</h2>
-              <p className="text-gray-500 text-sm">
-                결정 ID: <span className="font-mono">{decision.id}</span>
-              </p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">
-              ×
-            </button>
-          </div>
+    <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader className="p-6 pb-3">
+          <DialogTitle className="flex flex-col gap-1">
+            <span>AI 의사결정 상세</span>
+            <span className="text-sm font-normal text-gray-500">
+              결정 ID: <span className="font-mono">{decision.id}</span>
+            </span>
+          </DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">티커</label>
-                <p className="text-lg font-semibold text-gray-900">{decision.ticker}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">액션</label>
-                <p>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      decision.action === 'BUY'
-                        ? 'bg-green-100 text-green-800'
-                        : decision.action === 'SELL'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}
+        <div className="px-6 pb-6 space-y-4">
+          <Card className="border-gray-200 shadow-none">
+            <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+              <DetailItem label="티커" value={decision.ticker} />
+              <DetailItem
+                label="액션"
+                value={
+                  <Badge
+                    variant={
+                      decision.action === 'BUY' ? 'success' : decision.action === 'SELL' ? 'destructive' : 'secondary'
+                    }
                   >
                     {decision.action}
-                  </span>
-                </p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">매수 금액 (KRW)</label>
-                <p className="text-lg text-gray-900">{decision.amount_krw ? `₩${formatNumber(decision.amount_krw)}` : '-'}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">수량</label>
-                <p className="text-lg text-gray-900">{formatNumber(decision.quantity || 0)}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">신뢰도</label>
-                <p className="text-lg text-gray-900">{(decision.confidence * 100).toFixed(1)}%</p>
-              </div>
-              {decision.runs?.started_at && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Run Started At</label>
-                  <p className="text-sm text-gray-900">{formatDate(decision.runs.started_at)}</p>
-                </div>
-              )}
-              {decision.runs?.status && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Run Status</label>
-                  <p className="text-sm text-gray-900">{decision.runs.status}</p>
-                </div>
-              )}
-            </div>
+                  </Badge>
+                }
+              />
+              <DetailItem label="매수 금액 (KRW)" value={decision.amount_krw ? `₩${formatNumber(decision.amount_krw)}` : '-'} />
+              <DetailItem label="수량" value={formatNumber(decision.quantity || 0)} />
+              <DetailItem label="신뢰도" value={`${(decision.confidence * 100).toFixed(1)}%`} />
+              {decision.runs?.started_at && <DetailItem label="배치 시작 시각" value={formatDate(decision.runs.started_at)} />}
+              {decision.runs?.status && <DetailItem label="배치 상태" value={decision.runs.status} />}
+            </CardContent>
+          </Card>
 
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Reason</h3>
+          <Card className="border-gray-200 shadow-none">
+            <CardContent className="space-y-2 p-4">
+              <div className="text-sm font-semibold text-gray-900">사유</div>
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{decision.reason}</p>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Timestamp</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-500">Created At</label>
-                  <p className="text-sm text-gray-900">{formatDate(decision.created_at)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <Card className="border-gray-200 shadow-none">
+            <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+              <DetailItem label="생성 시각" value={formatDate(decision.created_at)} />
+            </CardContent>
+          </Card>
 
-          <div className="mt-6 flex justify-end">
-            <button onClick={onClose} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
-              닫기
-            </button>
+          <div className="flex justify-end">
+            <Button onClick={onClose}>닫기</Button>
           </div>
         </div>
-      </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="text-xs font-medium text-gray-500">{label}</div>
+      <div className="text-sm font-semibold text-gray-900">{value}</div>
     </div>
   );
 }

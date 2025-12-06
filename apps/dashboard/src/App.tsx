@@ -1,5 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
-import type { DashboardOverview, DecisionResponse, Order } from './api/client';
+import { useState, useCallback } from 'react';
 import { batchApi, dashboardApi } from './api/client';
 import { BatchResultModal, type BatchResult } from './components/BatchResultModal';
 import { MarketsPage } from './pages/MarketsPage';
@@ -8,56 +7,19 @@ import { DecisionsPage } from './pages/DecisionsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { OverviewPage } from './pages/OverviewPage';
 import type { OrderWithMeta } from './types';
+import { useDecisionsQuery, useOrdersQuery, useOverviewQuery } from './queries/dashboard';
+import { Sidebar } from './components/Sidebar';
+import { MobileNav } from './components/MobileNav';
 
 function App() {
-  const [overview, setOverview] = useState<DashboardOverview | null>(null);
-  const [activeTab, setActiveTab] = useState('markets');
-  const [decisions, setDecisions] = useState<DecisionResponse[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [activeTab, setActiveTab] = useState('overview');
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const [isFetchingBatchResult, setIsFetchingBatchResult] = useState(false);
   const [batchResultError, setBatchResultError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadOverview();
-    const interval = setInterval(loadOverview, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'decisions') {
-      loadDecisions();
-    } else if (activeTab === 'orders') {
-      loadOrders();
-    }
-  }, [activeTab]);
-
-  const loadOverview = async () => {
-    try {
-      const data = await dashboardApi.getOverview();
-      setOverview(data);
-    } catch (error) {
-      console.error('Failed to load overview:', error);
-    }
-  };
-
-  const loadDecisions = async () => {
-    try {
-      const data = await dashboardApi.getRecentDecisions();
-      setDecisions(data);
-    } catch (error) {
-      console.error('Failed to load decisions:', error);
-    }
-  };
-
-  const loadOrders = async () => {
-    try {
-      const data = await dashboardApi.getRecentOrders();
-      setOrders(data);
-    } catch (error) {
-      console.error('Failed to load orders:', error);
-    }
-  };
+  const overviewQuery = useOverviewQuery();
+  const decisionsQuery = useDecisionsQuery(50, activeTab === 'decisions');
+  const ordersQuery = useOrdersQuery(100, activeTab === 'orders');
 
   const fetchBatchResult = async ({ runId, market }: { runId: string; market: string }) => {
     setIsFetchingBatchResult(true);
@@ -110,72 +72,72 @@ function App() {
     setIsFetchingBatchResult(false);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <Header overview={overview} />
+  const stats = overviewQuery.data
+    ? {
+        totalEquity: overviewQuery.data.account?.total_equity,
+        returnRate: overviewQuery.data.account?.return_rate,
+        todayRuns: overviewQuery.data.today_runs,
+      }
+    : undefined;
 
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="flex gap-4">
-            {['markets', 'watchlist', 'decisions', 'orders', 'overview'].map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 border-b-2 font-medium capitalize ${
-                  activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Sidebar for desktop */}
+      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} stats={stats} />
+
+      {/* Mobile header */}
+      <div className="fixed left-0 right-0 top-0 z-30 border-b border-border bg-card/80 backdrop-blur-xl lg:hidden">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+              <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-sm font-bold text-foreground">Auto Finance</h1>
+              <p className="text-xs text-muted-foreground">AI Trading</p>
+            </div>
+          </div>
+          {stats?.returnRate !== undefined && (
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">수익률</div>
+              <div
+                className={`terminal-number text-sm font-bold ${
+                  stats.returnRate >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
-                {tab === 'markets' ? 'Market Schedules' : tab}
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {activeTab === 'markets' && <MarketsPage onBatchSuccess={handleBatchSuccess} />}
-        {activeTab === 'watchlist' && <WatchlistPage isActive={activeTab === 'watchlist'} />}
-        {activeTab === 'decisions' && <DecisionsPage decisions={decisions} />}
-        {activeTab === 'orders' && <OrdersPage orders={orders} />}
-        {activeTab === 'overview' && overview && <OverviewPage overview={overview} />}
-
-        <BatchResultModal result={batchResult} loading={isFetchingBatchResult} error={batchResultError} onClose={closeBatchResult} />
-      </div>
-    </div>
-  );
-}
-
-function Header({ overview }: { overview: DashboardOverview | null }) {
-  return (
-    <div className="flex items-center justify-between mb-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Auto-Finance Dashboard</h1>
-        <p className="text-gray-600">AI-Powered Multi-Market Trading Bot</p>
-      </div>
-      {overview && (
-        <div className="flex gap-6 text-sm">
-          {overview.account && (
-            <>
-              <HeaderStat label="총 자산" value={`₩${overview.account.total_equity.toLocaleString()}`} valueClass="text-gray-900" />
-              <HeaderStat label="투자 금액" value={`₩${overview.account.investment_amount.toLocaleString()}`} valueClass="text-blue-600" />
-              <HeaderStat
-                label="수익률"
-                value={`${overview.account.return_rate >= 0 ? '+' : ''}${overview.account.return_rate.toFixed(2)}%`}
-                valueClass={overview.account.return_rate >= 0 ? 'text-green-600' : 'text-red-600'}
-              />
-            </>
+                {stats.returnRate >= 0 ? '+' : ''}
+                {stats.returnRate.toFixed(2)}%
+              </div>
+            </div>
           )}
-          <HeaderStat label="Today's Runs" value={overview.today_runs} valueClass="text-gray-900" />
-          <HeaderStat label="Success Rate" value={`${(overview.success_rate_30d * 100).toFixed(0)}%`} valueClass="text-green-600" />
         </div>
-      )}
-    </div>
-  );
-}
+      </div>
 
-function HeaderStat({ label, value, valueClass }: { label: string; value: string | number; valueClass?: string }) {
-  return (
-    <div className="text-center">
-      <div className="text-gray-500">{label}</div>
-      <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+      {/* Main content */}
+      <main className="min-h-screen pb-20 pt-16 lg:ml-64 lg:pb-6 lg:pt-6">
+        <div className="mx-auto max-w-7xl px-4 lg:px-8">
+          <div className="animate-fade-in">
+            {activeTab === 'overview' && overviewQuery.data && <OverviewPage overview={overviewQuery.data} />}
+            {activeTab === 'markets' && <MarketsPage onBatchSuccess={handleBatchSuccess} />}
+            {activeTab === 'watchlist' && <WatchlistPage isActive={activeTab === 'watchlist'} />}
+            {activeTab === 'decisions' && <DecisionsPage decisions={decisionsQuery.data || []} />}
+            {activeTab === 'orders' && <OrdersPage orders={ordersQuery.data || []} />}
+          </div>
+        </div>
+      </main>
+
+      {/* Mobile bottom navigation */}
+      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Batch result modal */}
+      <BatchResultModal
+        result={batchResult}
+        loading={isFetchingBatchResult}
+        error={batchResultError}
+        onClose={closeBatchResult}
+      />
     </div>
   );
 }

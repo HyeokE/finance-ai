@@ -75,6 +75,12 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.86.2
         version: 2.86.2
+      '@tanstack/react-query':
+        specifier: ^5.62.10
+        version: 5.90.12(react@19.2.1)
+      '@tanstack/react-query-devtools':
+        specifier: ^5.62.10
+        version: 5.91.1(@tanstack/react-query@5.90.12)(react@19.2.1)
       axios:
         specifier: ^1.13.2
         version: 1.13.2
@@ -1393,6 +1399,34 @@ packages:
       postcss-selector-parser: 6.0.10
       tailwindcss: 3.4.18
     dev: true
+
+  /@tanstack/query-core@5.90.12:
+    resolution: {integrity: sha512-T1/8t5DhV/SisWjDnaiU2drl6ySvsHj1bHBCWNXd+/T+Hh1cf6JodyEYMd5sgwm+b/mETT4EV3H+zCVczCU5hg==}
+    dev: false
+
+  /@tanstack/query-devtools@5.91.1:
+    resolution: {integrity: sha512-l8bxjk6BMsCaVQH6NzQEE/bEgFy1hAs5qbgXl0xhzezlaQbPk6Mgz9BqEg2vTLPOHD8N4k+w/gdgCbEzecGyNg==}
+    dev: false
+
+  /@tanstack/react-query-devtools@5.91.1(@tanstack/react-query@5.90.12)(react@19.2.1):
+    resolution: {integrity: sha512-tRnJYwEbH0kAOuToy8Ew7bJw1lX3AjkkgSlf/vzb+NpnqmHPdWM+lA2DSdGQSLi1SU0PDRrrCI1vnZnci96CsQ==}
+    peerDependencies:
+      '@tanstack/react-query': ^5.90.10
+      react: ^18 || ^19
+    dependencies:
+      '@tanstack/query-devtools': 5.91.1
+      '@tanstack/react-query': 5.90.12(react@19.2.1)
+      react: 19.2.1
+    dev: false
+
+  /@tanstack/react-query@5.90.12(react@19.2.1):
+    resolution: {integrity: sha512-graRZspg7EoEaw0a8faiUASCyJrqjKPdqJ9EwuDRUF9mEYJ1YPczI9H+/agJ0mOJkPCJDk0lsz5QTrLZ/jQ2rg==}
+    peerDependencies:
+      react: ^18 || ^19
+    dependencies:
+      '@tanstack/query-core': 5.90.12
+      react: 19.2.1
+    dev: false
 
   /@types/axios@0.14.4:
     resolution: {integrity: sha512-9JgOaunvQdsQ/qW2OPmE5+hCeUB52lQSolecrFrthct55QekhmXEwT203s20RL+UHtCQc15y3VXpby9E7Kkh/g==}

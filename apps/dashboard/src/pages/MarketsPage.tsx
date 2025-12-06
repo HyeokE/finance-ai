@@ -7,12 +7,19 @@ type Props = {
 
 export function MarketsPage({ onBatchSuccess }: Props) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-      <h2 className="text-xl font-bold mb-2">Market-Specific Batch Settings</h2>
-      <p className="text-gray-600 mb-6">Configure batch schedules and risk parameters for each market independently</p>
-      <div>
-        {(['DOMESTIC', 'US', 'HK', 'JP', 'CN'] as Market[]).map((market) => (
-          <MarketCard key={market} market={market} onBatchSuccess={onBatchSuccess} />
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold text-foreground lg:text-3xl">시장별 배치 관리</h2>
+        <p className="text-sm text-muted-foreground">각 시장의 실행 스케줄과 리스크 파라미터를 설정하고 배치를 실행합니다</p>
+      </div>
+
+      {/* Market Cards */}
+      <div className="grid gap-4">
+        {(['DOMESTIC', 'US', 'HK', 'JP', 'CN'] as Market[]).map((market, index) => (
+          <div key={market} className="animate-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
+            <MarketCard market={market} onBatchSuccess={onBatchSuccess} />
+          </div>
         ))}
       </div>
     </div>
