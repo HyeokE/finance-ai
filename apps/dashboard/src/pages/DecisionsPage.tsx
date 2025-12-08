@@ -1,23 +1,48 @@
-import { useState } from 'react';
-import type { DecisionResponse } from '../api/client';
-import { DecisionDetailModal } from '../components/DecisionDetailModal';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Badge } from '../components/ui/badge';
+import { useState } from "react";
+import type { DecisionResponse } from "../api/client";
+import { DecisionDetailModal } from "../components/DecisionDetailModal";
+import { StockChartModal } from "../components/StockChartModal";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "../components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
+import { Badge } from "../components/ui/badge";
+import { formatKRW } from "../lib/formatters";
 
 type Props = {
   decisions: DecisionResponse[];
 };
 
 export function DecisionsPage({ decisions }: Props) {
-  const [selectedDecision, setSelectedDecision] = useState<DecisionResponse | null>(null);
+  const [selectedDecision, setSelectedDecision] =
+    useState<DecisionResponse | null>(null);
+  const [chartStock, setChartStock] = useState<{
+    ticker: string;
+    name: string;
+    market: string;
+  } | null>(null);
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-foreground lg:text-3xl">AI 의사결정 기록</h2>
-        <p className="text-sm text-muted-foreground">AI가 분석한 투자 결정 내역을 확인합니다</p>
+        <h2 className="text-2xl font-bold text-foreground lg:text-3xl">
+          AI 의사결정 기록
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          AI가 분석한 투자 결정 내역을 확인합니다
+        </p>
       </div>
 
       {/* Stats Summary */}
@@ -25,14 +50,16 @@ export function DecisionsPage({ decisions }: Props) {
         <Card className="glass border-border/50">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">총 결정</div>
-            <div className="terminal-number text-2xl font-bold text-foreground">{decisions.length}</div>
+            <div className="terminal-number text-2xl font-bold text-foreground">
+              {decisions.length}
+            </div>
           </CardContent>
         </Card>
         <Card className="glass border-border/50">
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">매수 신호</div>
             <div className="terminal-number text-2xl font-bold text-green-400">
-              {decisions.filter((d) => d.action === 'BUY').length}
+              {decisions.filter((d) => d.action === "BUY").length}
             </div>
           </CardContent>
         </Card>
@@ -40,7 +67,7 @@ export function DecisionsPage({ decisions }: Props) {
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">매도 신호</div>
             <div className="terminal-number text-2xl font-bold text-red-400">
-              {decisions.filter((d) => d.action === 'SELL').length}
+              {decisions.filter((d) => d.action === "SELL").length}
             </div>
           </CardContent>
         </Card>
@@ -48,7 +75,14 @@ export function DecisionsPage({ decisions }: Props) {
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">평균 신뢰도</div>
             <div className="terminal-number text-2xl font-bold text-primary">
-              {decisions.length > 0 ? ((decisions.reduce((sum, d) => sum + d.confidence, 0) / decisions.length) * 100).toFixed(0) : 0}%
+              {decisions.length > 0
+                ? (
+                    (decisions.reduce((sum, d) => sum + d.confidence, 0) /
+                      decisions.length) *
+                    100
+                  ).toFixed(0)
+                : 0}
+              %
             </div>
           </CardContent>
         </Card>
@@ -70,7 +104,9 @@ export function DecisionsPage({ decisions }: Props) {
                   <TableHead className="text-muted-foreground">액션</TableHead>
                   <TableHead className="text-muted-foreground">수량</TableHead>
                   <TableHead className="text-muted-foreground">금액</TableHead>
-                  <TableHead className="text-muted-foreground">신뢰도</TableHead>
+                  <TableHead className="text-muted-foreground">
+                    신뢰도
+                  </TableHead>
                   <TableHead className="text-muted-foreground">사유</TableHead>
                 </TableRow>
               </TableHeader>
@@ -82,40 +118,76 @@ export function DecisionsPage({ decisions }: Props) {
                     className="cursor-pointer border-border/50 transition-colors hover:bg-secondary/30"
                   >
                     <TableCell className="text-xs text-muted-foreground">
-                      {new Date(decision.created_at).toLocaleString('ko-KR', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
+                      {new Date(decision.created_at).toLocaleString("ko-KR", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
                       })}
                     </TableCell>
-                    <TableCell className="font-semibold text-foreground">{decision.ticker}</TableCell>
+                    <TableCell className="font-semibold text-foreground">
+                      <button
+                        onClick={() =>
+                          setChartStock({
+                            ticker: decision.ticker,
+                            name: decision.name || decision.ticker,
+                            market: decision.runs?.market || "DOMESTIC",
+                          })
+                        }
+                        className="flex flex-col gap-0.5 text-left transition-colors hover:text-primary"
+                      >
+                        <span className="font-mono">{decision.ticker}</span>
+                        {decision.name && (
+                          <span className="text-xs text-muted-foreground">
+                            {decision.name}
+                          </span>
+                        )}
+                      </button>
+                    </TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          decision.action === 'BUY' ? 'success' : decision.action === 'SELL' ? 'destructive' : 'secondary'
+                          decision.action === "BUY"
+                            ? "success"
+                            : decision.action === "SELL"
+                            ? "destructive"
+                            : "secondary"
                         }
                       >
                         {decision.action}
                       </Badge>
                     </TableCell>
-                    <TableCell className="terminal-number text-foreground">{decision.quantity || '-'}</TableCell>
                     <TableCell className="terminal-number text-foreground">
-                      {decision.amount_krw ? `₩${decision.amount_krw.toLocaleString()}` : '-'}
+                      {decision.quantity || "-"}
+                    </TableCell>
+                    <TableCell className="terminal-number text-foreground">
+                      {decision.amount_krw
+                        ? formatKRW(decision.amount_krw)
+                        : "-"}
                     </TableCell>
                     <TableCell>
                       <span className="terminal-number font-semibold text-primary">
                         {(decision.confidence * 100).toFixed(0)}%
                       </span>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">{decision.reason}</TableCell>
+                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
+                      {decision.reason}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {decisions.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                    <TableCell
+                      colSpan={7}
+                      className="py-12 text-center text-muted-foreground"
+                    >
                       <div className="flex flex-col items-center gap-2">
-                        <svg className="h-12 w-12 text-muted-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg
+                          className="h-12 w-12 text-muted-foreground/30"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -134,7 +206,30 @@ export function DecisionsPage({ decisions }: Props) {
         </CardContent>
       </Card>
 
-      <DecisionDetailModal decision={selectedDecision} onClose={() => setSelectedDecision(null)} />
+      <DecisionDetailModal
+        decision={selectedDecision}
+        onClose={() => setSelectedDecision(null)}
+      />
+
+      {chartStock && (
+        <StockChartModal
+          ticker={chartStock.ticker}
+          name={chartStock.name}
+          market={chartStock.market}
+          orders={decisions
+            .filter((d) => d.ticker === chartStock.ticker)
+            .map((d) => ({
+              action: d.action,
+              created_at: d.created_at,
+              avg_filled_price:
+                d.amount_krw && d.quantity
+                  ? d.amount_krw / d.quantity
+                  : undefined,
+              requested_price: undefined,
+            }))}
+          onClose={() => setChartStock(null)}
+        />
+      )}
     </div>
   );
 }

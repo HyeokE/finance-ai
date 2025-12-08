@@ -1,33 +1,54 @@
-import { useState, useCallback } from 'react';
-import { batchApi, dashboardApi } from './api/client';
-import { BatchResultModal, type BatchResult } from './components/BatchResultModal';
-import { MarketsPage } from './pages/MarketsPage';
-import { WatchlistPage } from './pages/WatchlistPage';
-import { DecisionsPage } from './pages/DecisionsPage';
-import { OrdersPage } from './pages/OrdersPage';
-import { OverviewPage } from './pages/OverviewPage';
-import type { OrderWithMeta } from './types';
-import { useDecisionsQuery, useOrdersQuery, useOverviewQuery } from './queries/dashboard';
-import { Sidebar } from './components/Sidebar';
-import { MobileNav } from './components/MobileNav';
+import { useState, useCallback } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { batchApi, dashboardApi } from "./api/client";
+import {
+  BatchResultModal,
+  type BatchResult,
+} from "./components/BatchResultModal";
+import { MarketsPage } from "./pages/MarketsPage";
+import { WatchlistPage } from "./pages/WatchlistPage";
+import { DecisionsPage } from "./pages/DecisionsPage";
+import { OrdersPage } from "./pages/OrdersPage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { StockDetailPage } from "./pages/StockDetailPage";
+import { PositionsPage } from "./pages/PositionsPage";
+import type { OrderWithMeta } from "./types";
+import {
+  useDecisionsQuery,
+  useOrdersQuery,
+  useOverviewQuery,
+} from "./queries/dashboard";
+import { Sidebar } from "./components/Sidebar";
+import { MobileNav } from "./components/MobileNav";
 
 function App() {
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
   const [isFetchingBatchResult, setIsFetchingBatchResult] = useState(false);
   const [batchResultError, setBatchResultError] = useState<string | null>(null);
 
   const overviewQuery = useOverviewQuery();
-  const decisionsQuery = useDecisionsQuery(50, activeTab === 'decisions');
-  const ordersQuery = useOrdersQuery(100, activeTab === 'orders');
+  const decisionsQuery = useDecisionsQuery(
+    50,
+    location.pathname === "/decisions"
+  );
+  const ordersQuery = useOrdersQuery(100, location.pathname === "/orders");
 
-  const fetchBatchResult = async ({ runId, market }: { runId: string; market: string }) => {
+  const fetchBatchResult = async ({
+    runId,
+    market,
+  }: {
+    runId: string;
+    market: string;
+  }) => {
     setIsFetchingBatchResult(true);
     setBatchResultError(null);
     try {
       const status = await batchApi.getStatus(runId);
       const decisionList = status.decisions || [];
-      const recentOrders = (await dashboardApi.getRecentOrders(200)) as OrderWithMeta[];
+      const recentOrders = (await dashboardApi.getRecentOrders(
+        200
+      )) as OrderWithMeta[];
       const runStart = status.run.started_at;
 
       const ordersForRun = recentOrders.filter((order) => {
@@ -45,8 +66,12 @@ function App() {
         orders: ordersForRun,
       });
     } catch (error: unknown) {
-      console.error('Failed to fetch batch result', error);
-      setBatchResultError(error instanceof Error ? error.message : '배치 결과를 가져오지 못했습니다');
+      console.error("Failed to fetch batch result", error);
+      setBatchResultError(
+        error instanceof Error
+          ? error.message
+          : "배치 결과를 가져오지 못했습니다"
+      );
     } finally {
       setIsFetchingBatchResult(false);
     }
@@ -57,7 +82,7 @@ function App() {
       setBatchResult({
         runId: payload.runId,
         market: payload.market,
-        status: 'running',
+        status: "running",
         decisions: [],
         orders: [],
       });
@@ -83,19 +108,31 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar for desktop */}
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} stats={stats} />
+      <Sidebar stats={stats} />
 
       {/* Mobile header */}
       <div className="fixed left-0 right-0 top-0 z-30 border-b border-border bg-card/80 backdrop-blur-xl lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-              <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <svg
+                className="h-5 w-5 text-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
               </svg>
             </div>
             <div>
-              <h1 className="text-sm font-bold text-foreground">Auto Finance</h1>
+              <h1 className="text-sm font-bold text-foreground">
+                Auto Finance
+              </h1>
               <p className="text-xs text-muted-foreground">AI Trading</p>
             </div>
           </div>
@@ -104,10 +141,10 @@ function App() {
               <div className="text-xs text-muted-foreground">수익률</div>
               <div
                 className={`terminal-number text-sm font-bold ${
-                  stats.returnRate >= 0 ? 'text-green-400' : 'text-red-400'
+                  stats.returnRate >= 0 ? "text-green-400" : "text-red-400"
                 }`}
               >
-                {stats.returnRate >= 0 ? '+' : ''}
+                {stats.returnRate >= 0 ? "+" : ""}
                 {stats.returnRate.toFixed(2)}%
               </div>
             </div>
@@ -119,17 +156,46 @@ function App() {
       <main className="min-h-screen pb-20 pt-16 lg:ml-64 lg:pb-6 lg:pt-6">
         <div className="mx-auto max-w-7xl px-4 lg:px-8">
           <div className="animate-fade-in">
-            {activeTab === 'overview' && overviewQuery.data && <OverviewPage overview={overviewQuery.data} />}
-            {activeTab === 'markets' && <MarketsPage onBatchSuccess={handleBatchSuccess} />}
-            {activeTab === 'watchlist' && <WatchlistPage isActive={activeTab === 'watchlist'} />}
-            {activeTab === 'decisions' && <DecisionsPage decisions={decisionsQuery.data || []} />}
-            {activeTab === 'orders' && <OrdersPage orders={ordersQuery.data || []} />}
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  overviewQuery.data ? (
+                    <OverviewPage overview={overviewQuery.data} />
+                  ) : null
+                }
+              />
+              <Route
+                path="/markets"
+                element={<MarketsPage onBatchSuccess={handleBatchSuccess} />}
+              />
+              <Route
+                path="/watchlist"
+                element={
+                  <WatchlistPage
+                    isActive={location.pathname === "/watchlist"}
+                  />
+                }
+              />
+              <Route
+                path="/decisions"
+                element={
+                  <DecisionsPage decisions={decisionsQuery.data || []} />
+                }
+              />
+              <Route
+                path="/orders"
+                element={<OrdersPage orders={ordersQuery.data || []} />}
+              />
+              <Route path="/positions" element={<PositionsPage />} />
+              <Route path="/stock/:ticker" element={<StockDetailPage />} />
+            </Routes>
           </div>
         </div>
       </main>
 
       {/* Mobile bottom navigation */}
-      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <MobileNav />
 
       {/* Batch result modal */}
       <BatchResultModal

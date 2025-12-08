@@ -2,10 +2,10 @@
  * Base API Configuration Interface
  */
 export interface ApiConfig {
-    baseURL: string;
-    timeout?: number;
-    headers?: Record<string, string>;
-    retryAttempts?: number;
+  baseURL: string;
+  timeout?: number;
+  headers?: Record<string, string>;
+  retryAttempts?: number;
 }
 
 /**
@@ -13,16 +13,16 @@ export interface ApiConfig {
  * All API factories must implement this interface
  */
 export interface ApiFactory<T> {
-    create(config: ApiConfig): T;
+  create(config: ApiConfig): T;
 }
 
 /**
  * Default API Configuration
  */
 export const DEFAULT_API_CONFIG: Partial<ApiConfig> = {
-    timeout: 10000,
-    retryAttempts: 3,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+  timeout: 600000,
+  retryAttempts: 3,
+  headers: {
+    "Content-Type": "application/json",
+  },
 };

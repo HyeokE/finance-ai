@@ -1,12 +1,12 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import path from 'path';
-import { BatchOrchestrator } from './agents/BatchOrchestrator';
-import { getScheduler } from './scheduler';
-import { SupabaseClientManager } from './infrastructure/database/SupabaseClient';
-import { Market } from './model/Trading';
-import { logger } from './util/logger';
+import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import path from "path";
+import { BatchOrchestrator } from "./agents/BatchOrchestrator";
+import { getScheduler } from "./scheduler";
+import { SupabaseClientManager } from "./infrastructure/database/SupabaseClient";
+import { Market } from "./model/Trading";
+import { logger } from "./util/logger";
 import {
   getAllMarketBatchSettings,
   getMarketBatchSettings,
@@ -20,26 +20,31 @@ import {
   getDashboardOverview,
   getRecentDecisions,
   getRecentOrders,
-} from './controller/SettingsController';
+} from "./controller/SettingsController";
 import {
   getWatchlist,
   addWatchlistItem,
   updateWatchlistItem,
   deleteWatchlistItem,
   toggleWatchlistItem,
-} from './controller/WatchlistController';
-import { runBatchManually } from './controller/BatchController';
+  getWatchlistDetailed,
+} from "./controller/WatchlistController";
+import {
+  runBatchManually,
+  getMarketStatus,
+} from "./controller/BatchController";
 import {
   searchStocks,
   getPopularStocks,
   getStockDetail,
-} from './controller/StockController';
+  getStockHistory,
+} from "./controller/StockController";
 
 // Load .env from project root (monorepo)
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 8888;
 
 // Middleware
 app.use(cors());
@@ -50,65 +55,36 @@ app.use(express.urlencoded({ extended: true }));
 const orchestrator = new BatchOrchestrator();
 
 // Routes
-app.get('/', (req: Request, res: Response) => {
+app.get("/", (req: Request, res: Response) => {
   res.json({
-    message: 'Auto Finance Server',
-    mode: process.env.MODE || 'paper',
-    version: '1.0.0',
+    message: "Auto Finance Server",
+    mode: process.env.MODE || "paper",
+    version: "1.0.0",
   });
 });
 
-app.get('/health', async (req: Request, res: Response) => {
+app.get("/health", async (req: Request, res: Response) => {
   try {
     const dbConnected = await SupabaseClientManager.testConnection();
 
     res.json({
-      status: 'ok',
+      status: "ok",
       timestamp: new Date().toISOString(),
-      database: dbConnected ? 'connected' : 'disconnected',
-      mode: process.env.MODE || 'paper',
+      database: dbConnected ? "connected" : "disconnected",
+      mode: process.env.MODE || "paper",
     });
   } catch (error) {
     res.status(500).json({
-      status: 'error',
-      message: 'Health check failed',
+      status: "error",
+      message: "Health check failed",
     });
   }
 });
 
-// Trigger manual batch run
-app.post('/api/batch/run/:market?', async (req, res) => {
-  try {
-    const marketParam = req.params.market || Market.DOMESTIC;
-    // Validate and convert to Market enum
-    const marketEnum = Object.values(Market).find(m => m === marketParam);
-    if (!marketEnum) {
-      return res.status(400).json({
-        success: false,
-        error: `Invalid market. Must be one of: ${Object.values(Market).join(', ')}`,
-      });
-    }
-    logger.info(`Manual batch trigger requested for market: ${marketEnum}`);
-    const orchestrator = new BatchOrchestrator();
-    const result = await orchestrator.runBatch(marketEnum);
-
-    res.json({
-      success: true,
-      run_id: result.runId,
-      market: marketEnum,
-      status: result.status,
-    });
-  } catch (error) {
-    logger.error('Failed to trigger batch', { error });
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to run batch',
-    });
-  }
-});
+// Batch run endpoint is defined below with BatchController
 
 // Get batch status
-app.get('/api/batch/status/:runId', async (req: Request, res: Response) => {
+app.get("/api/batch/status/:runId", async (req: Request, res: Response) => {
   try {
     const { runId } = req.params;
     // Assuming orchestrator is still globally available or re-instantiated if needed for this route
@@ -120,19 +96,19 @@ app.get('/api/batch/status/:runId', async (req: Request, res: Response) => {
     res.json(status);
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });
 
 // Get analytics
-app.get('/api/analytics', async (req: Request, res: Response) => {
+app.get("/api/analytics", async (req: Request, res: Response) => {
   try {
     const analytics = await orchestrator.getAnalytics();
     res.json(analytics);
   } catch (error) {
     res.status(500).json({
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
     });
   }
 });
@@ -142,69 +118,72 @@ app.get('/api/analytics', async (req: Request, res: Response) => {
 // ===================================
 
 // Market-specific batch settings
-app.get('/api/settings/markets', getAllMarketBatchSettings);
-app.get('/api/settings/markets/:market/batch', getMarketBatchSettings);
-app.put('/api/settings/markets/:market/batch', updateMarketBatchSettings);
-app.get('/api/settings/markets/:market/risk', getMarketRiskSettings);
-app.put('/api/settings/markets/:market/risk', updateMarketRiskSettings);
+app.get("/api/settings/markets", getAllMarketBatchSettings);
+app.get("/api/settings/markets/:market/batch", getMarketBatchSettings);
+app.put("/api/settings/markets/:market/batch", updateMarketBatchSettings);
+app.get("/api/settings/markets/:market/risk", getMarketRiskSettings);
+app.put("/api/settings/markets/:market/risk", updateMarketRiskSettings);
 
 // Legacy settings (deprecated)
-app.get('/api/settings/batch', getBatchSettings);
-app.put('/api/settings/batch', updateBatchSettings);
-app.get('/api/settings/risk', getRiskSettings);
-app.put('/api/settings/risk', updateRiskSettings);
+app.get("/api/settings/batch", getBatchSettings);
+app.put("/api/settings/batch", updateBatchSettings);
+app.get("/api/settings/risk", getRiskSettings);
+app.put("/api/settings/risk", updateRiskSettings);
 
 // Dashboard data
-app.get('/api/dashboard/overview', getDashboardOverview);
-app.get('/api/dashboard/recent-decisions', getRecentDecisions);
-app.get('/api/dashboard/recent-orders', getRecentOrders);
+app.get("/api/dashboard/overview", getDashboardOverview);
+app.get("/api/dashboard/recent-decisions", getRecentDecisions);
+app.get("/api/dashboard/recent-orders", getRecentOrders);
 
 // Watchlist
-app.get('/api/watchlist', getWatchlist);
-app.get('/api/watchlist/:market', getWatchlist);
-app.post('/api/watchlist', addWatchlistItem);
-app.put('/api/watchlist/:id', updateWatchlistItem);
-app.delete('/api/watchlist/:id', deleteWatchlistItem);
-app.patch('/api/watchlist/:id/toggle', toggleWatchlistItem);
+app.get("/api/watchlist/:market/detailed", getWatchlistDetailed);
+app.get("/api/watchlist", getWatchlist);
+app.get("/api/watchlist/:market", getWatchlist);
+app.post("/api/watchlist", addWatchlistItem);
+app.put("/api/watchlist/:id", updateWatchlistItem);
+app.delete("/api/watchlist/:id", deleteWatchlistItem);
+app.patch("/api/watchlist/:id/toggle", toggleWatchlistItem);
 
 // Batch Operations
-app.post('/api/batch/run/:market', runBatchManually);
+app.get("/api/batch/market-status", getMarketStatus);
+app.post("/api/batch/run/:market", runBatchManually);
 
 // Stock Search
-app.get('/api/stocks/search', searchStocks);
-app.get('/api/stocks/popular', getPopularStocks);
-app.get('/api/stocks/:ticker', getStockDetail);
+app.get("/api/stocks/search", searchStocks);
+app.get("/api/stocks/popular", getPopularStocks);
+app.get("/api/stocks/:ticker/history", getStockHistory);
+app.get("/api/stocks/:ticker", getStockDetail);
 
 // ===================================
 // Error Handling
 // ===================================
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  logger.error('Server error', { error: err });
-  res.status(500).json({ error: 'Something went wrong!' });
+  logger.error("Server error", { error: err });
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 // 404 handler
 app.use((req: Request, res: Response) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ error: "Route not found" });
 });
 
 // Start server
 const startServer = async () => {
   app.listen(PORT, async () => {
     logger.info(`🚀 Auto-Finance Server started on http://localhost:${PORT}`);
-    logger.info(`📊 Mode: ${process.env.MODE || 'paper'}`);
+    logger.info(`📊 Mode: ${process.env.MODE || "paper"}`);
 
     // Start scheduler
     try {
       const scheduler = getScheduler();
       await scheduler.start();
     } catch (error) {
-      logger.error('Failed to start scheduler', { error });
+      logger.error("Failed to start scheduler", { error });
     }
   });
 };
 
 startServer().catch((error) => {
-  logger.error('Failed to start server', { error });
+  logger.error("Failed to start server", { error });
   process.exit(1);
 });

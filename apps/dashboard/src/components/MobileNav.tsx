@@ -1,23 +1,24 @@
-import { type ReactNode } from 'react';
+import { type ReactNode } from "react";
+import { NavLink } from "react-router-dom";
 
 type NavItem = {
-  id: string;
+  path: string;
   label: string;
   icon: ReactNode;
 };
 
-type Props = {
-  activeTab: string;
-  onTabChange: (tab: string) => void;
-};
-
-export function MobileNav({ activeTab, onTabChange }: Props) {
+export function MobileNav() {
   const navItems: NavItem[] = [
     {
-      id: 'overview',
-      label: '개요',
+      path: "/",
+      label: "개요",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -28,10 +29,15 @@ export function MobileNav({ activeTab, onTabChange }: Props) {
       ),
     },
     {
-      id: 'markets',
-      label: '시장',
+      path: "/markets",
+      label: "시장",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -42,10 +48,15 @@ export function MobileNav({ activeTab, onTabChange }: Props) {
       ),
     },
     {
-      id: 'watchlist',
-      label: '관심종목',
+      path: "/watchlist",
+      label: "관심",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -56,10 +67,34 @@ export function MobileNav({ activeTab, onTabChange }: Props) {
       ),
     },
     {
-      id: 'decisions',
-      label: 'AI',
+      path: "/positions",
+      label: "보유",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+          />
+        </svg>
+      ),
+    },
+    {
+      path: "/decisions",
+      label: "AI",
+      icon: (
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -70,10 +105,15 @@ export function MobileNav({ activeTab, onTabChange }: Props) {
       ),
     },
     {
-      id: 'orders',
-      label: '주문',
+      path: "/orders",
+      label: "주문",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -89,25 +129,34 @@ export function MobileNav({ activeTab, onTabChange }: Props) {
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/80 backdrop-blur-xl lg:hidden">
       <div className="flex items-center justify-around">
         {navItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => onTabChange(item.id)}
-            className={`group flex flex-1 flex-col items-center gap-1 px-3 py-3 transition-all ${
-              activeTab === item.id ? 'text-primary' : 'text-muted-foreground'
-            }`}
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === "/"}
+            className={({ isActive }) =>
+              `group relative flex flex-1 flex-col items-center gap-1 px-3 py-3 transition-all ${
+                isActive ? "text-primary" : "text-muted-foreground"
+              }`
+            }
           >
-            <span
-              className={`transition-all ${
-                activeTab === item.id ? 'scale-110 text-primary' : 'text-muted-foreground group-active:scale-95'
-              }`}
-            >
-              {item.icon}
-            </span>
-            <span className="text-xs font-medium">{item.label}</span>
-            {activeTab === item.id && (
-              <div className="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-primary"></div>
+            {({ isActive }) => (
+              <>
+                <span
+                  className={`transition-all ${
+                    isActive
+                      ? "scale-110 text-primary"
+                      : "text-muted-foreground group-active:scale-95"
+                  }`}
+                >
+                  {item.icon}
+                </span>
+                <span className="text-xs font-medium">{item.label}</span>
+                {isActive && (
+                  <div className="absolute bottom-0 left-1/2 h-1 w-12 -translate-x-1/2 rounded-full bg-primary"></div>
+                )}
+              </>
             )}
-          </button>
+          </NavLink>
         ))}
       </div>
     </nav>

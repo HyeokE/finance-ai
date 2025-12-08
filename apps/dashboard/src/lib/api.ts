@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8888';
 
 export async function fetchBatchSettings() {
     const res = await fetch(`${API_BASE_URL}/api/settings/batch`);
@@ -44,11 +44,20 @@ export async function fetchRecentDecisions(limit = 20) {
     return res.json();
 }
 
-export async function triggerBatch() {
-    const res = await fetch(`${API_BASE_URL}/api/batch/run`, {
+export async function fetchMarketStatus() {
+    const res = await fetch(`${API_BASE_URL}/api/batch/market-status`);
+    if (!res.ok) throw new Error('Failed to fetch market status');
+    return res.json();
+}
+
+export async function triggerBatch(market: 'DOMESTIC' | 'US') {
+    const res = await fetch(`${API_BASE_URL}/api/batch/run/${market}`, {
         method: 'POST',
     });
-    if (!res.ok) throw new Error('Failed to trigger batch');
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to trigger batch');
+    }
     return res.json();
 }
 

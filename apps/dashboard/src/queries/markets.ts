@@ -11,10 +11,16 @@ export const marketQueries = {
     queryKey: queryKeys.marketRiskSettings(market),
     queryFn: () => marketSettingsApi.getRiskSettings(market),
   }),
+  marketStatus: () => ({
+    queryKey: ['market-status'],
+    queryFn: () => batchApi.getMarketStatus(),
+    refetchInterval: 60000, // Refetch every minute
+  }),
 };
 
 export const useMarketBatchSettingsQuery = (market: string) => useQuery(marketQueries.batchSettings(market));
 export const useMarketRiskSettingsQuery = (market: string) => useQuery(marketQueries.riskSettings(market));
+export const useMarketStatusQuery = () => useQuery(marketQueries.marketStatus());
 
 export const useUpdateMarketBatchMutation = (market: string) => {
   const queryClient = useQueryClient();

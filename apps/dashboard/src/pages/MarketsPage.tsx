@@ -16,7 +16,7 @@ export function MarketsPage({ onBatchSuccess }: Props) {
 
       {/* Market Cards */}
       <div className="grid gap-4">
-        {(['DOMESTIC', 'US', 'HK', 'JP', 'CN'] as Market[]).map((market, index) => (
+        {(['DOMESTIC', 'US'] as Market[]).map((market, index) => (
           <div key={market} className="animate-slide-up" style={{ animationDelay: `${index * 50}ms` }}>
             <MarketCard market={market} onBatchSuccess={onBatchSuccess} />
           </div>

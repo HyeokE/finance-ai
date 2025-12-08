@@ -6,6 +6,8 @@ import {
   useMarketRiskSettingsQuery,
   useRunBatchMutation,
   useUpdateMarketBatchMutation,
+  useUpdateMarketRiskMutation,
+  useMarketStatusQuery,
 } from '../queries/markets';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
@@ -20,18 +22,30 @@ type Props = {
 
 export function MarketCard({ market, onBatchSuccess }: Props) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingRisk, setIsEditingRisk] = useState(false);
   const [editedTimes, setEditedTimes] = useState('');
+  const [editedRiskSettings, setEditedRiskSettings] = useState({
+    max_position_weight: 0,
+    max_total_investment: 0,
+    min_confidence: 0,
+    max_trades_per_batch: 0,
+  });
+  const [editedMaxStocks, setEditedMaxStocks] = useState(0);
   const [batchStatus, setBatchStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const info = MARKET_INFO[market];
 
   const batchSettingsQuery = useMarketBatchSettingsQuery(market);
   const riskSettingsQuery = useMarketRiskSettingsQuery(market);
+  const marketStatusQuery = useMarketStatusQuery();
   const updateBatchMutation = useUpdateMarketBatchMutation(market);
+  const updateRiskMutation = useUpdateMarketRiskMutation(market);
   const runBatchMutation = useRunBatchMutation(market);
 
   const batchSettings = batchSettingsQuery.data;
   const riskSettings = riskSettingsQuery.data;
+  const marketStatus = marketStatusQuery.data?.markets.find((m) => m.market === market);
+  const isMarketOpen = marketStatus?.isOpen ?? true; // Default to true if status not loaded yet
 
   const handleToggle = async () => {
     if (!batchSettings) return;
@@ -48,6 +62,44 @@ export function MarketCard({ market, onBatchSuccess }: Props) {
       { schedule_times: times },
       {
         onSuccess: () => setIsEditing(false),
+      }
+    );
+  };
+
+  const handleStartEditRisk = () => {
+    if (riskSettings && batchSettings) {
+      setEditedRiskSettings({
+        max_position_weight: riskSettings.max_position_weight,
+        max_total_investment: riskSettings.max_total_investment,
+        min_confidence: riskSettings.min_confidence,
+        max_trades_per_batch: riskSettings.max_trades_per_batch,
+      });
+      setEditedMaxStocks(batchSettings.max_stocks);
+      setIsEditingRisk(true);
+    }
+  };
+
+  const handleSaveRiskSettings = async () => {
+    if (!riskSettings || !batchSettings) return;
+
+    // Update risk settings
+    updateRiskMutation.mutate(
+      {
+        max_position_weight: editedRiskSettings.max_position_weight,
+        max_total_investment: editedRiskSettings.max_total_investment,
+        min_confidence: editedRiskSettings.min_confidence,
+        max_trades_per_batch: editedRiskSettings.max_trades_per_batch,
+      },
+      {
+        onSuccess: () => {
+          // Update max_stocks in batch settings
+          updateBatchMutation.mutate(
+            { max_stocks: editedMaxStocks },
+            {
+              onSuccess: () => setIsEditingRisk(false),
+            }
+          );
+        },
       }
     );
   };
@@ -162,31 +214,131 @@ export function MarketCard({ market, onBatchSuccess }: Props) {
         </div>
 
         {/* Risk Parameters Grid */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="포지션 한도" value={`${(riskSettings.max_position_weight * 100).toFixed(0)}%`} />
-          <Stat label="총 투자 한도" value={`${(riskSettings.max_total_investment * 100).toFixed(0)}%`} />
-          <Stat label="최소 신뢰도" value={`${(riskSettings.min_confidence * 100).toFixed(0)}%`} />
-          <Stat label="최대 종목 수" value={batchSettings.max_stocks} />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-semibold text-foreground">리스크 관리 설정</label>
+            {!isEditingRisk && (
+              <Button variant="outline" size="sm" onClick={handleStartEditRisk}>
+                수정
+              </Button>
+            )}
+          </div>
+
+          {isEditingRisk ? (
+            <div className="space-y-3 rounded-lg border border-border/50 bg-secondary/20 p-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">포지션 한도 (%)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={(editedRiskSettings.max_position_weight * 100).toFixed(0)}
+                    onChange={(e) =>
+                      setEditedRiskSettings({
+                        ...editedRiskSettings,
+                        max_position_weight: parseFloat(e.target.value) / 100,
+                      })
+                    }
+                    className="bg-secondary/50 border-border/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">총 투자 한도 (%)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={(editedRiskSettings.max_total_investment * 100).toFixed(0)}
+                    onChange={(e) =>
+                      setEditedRiskSettings({
+                        ...editedRiskSettings,
+                        max_total_investment: parseFloat(e.target.value) / 100,
+                      })
+                    }
+                    className="bg-secondary/50 border-border/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">최소 신뢰도 (%)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={(editedRiskSettings.min_confidence * 100).toFixed(0)}
+                    onChange={(e) =>
+                      setEditedRiskSettings({
+                        ...editedRiskSettings,
+                        min_confidence: parseFloat(e.target.value) / 100,
+                      })
+                    }
+                    className="bg-secondary/50 border-border/50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">최대 종목 수</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={editedMaxStocks}
+                    onChange={(e) => setEditedMaxStocks(parseInt(e.target.value) || 0)}
+                    className="bg-secondary/50 border-border/50"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button onClick={handleSaveRiskSettings} size="sm" className="flex-1">
+                  저장
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditingRisk(false)}
+                  size="sm"
+                  className="flex-1"
+                >
+                  취소
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat label="포지션 한도" value={`${(riskSettings.max_position_weight * 100).toFixed(0)}%`} />
+              <Stat label="총 투자 한도" value={`${(riskSettings.max_total_investment * 100).toFixed(0)}%`} />
+              <Stat label="최소 신뢰도" value={`${(riskSettings.min_confidence * 100).toFixed(0)}%`} />
+              <Stat label="최대 종목 수" value={batchSettings.max_stocks} />
+            </div>
+          )}
         </div>
 
         {/* Action Section */}
         <div className="flex flex-col gap-3 border-t border-border/50 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            onClick={handleRunBatch}
-            disabled={!batchSettings.enabled || runBatchMutation.isPending}
-            variant={batchSettings.enabled ? 'default' : 'secondary'}
-            size="md"
-            className="sm:min-w-[160px]"
-          >
-            {runBatchMutation.isPending ? (
-              <span className="flex items-center gap-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
-                실행 중...
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              onClick={handleRunBatch}
+              disabled={!batchSettings.enabled || !isMarketOpen || runBatchMutation.isPending}
+              variant={batchSettings.enabled && isMarketOpen ? 'default' : 'secondary'}
+              size="md"
+              className="sm:min-w-[160px]"
+            >
+              {runBatchMutation.isPending ? (
+                <span className="flex items-center gap-2">
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                  실행 중...
+                </span>
+              ) : (
+                '지금 배치 실행'
+              )}
+            </Button>
+            {!isMarketOpen && marketStatus && (
+              <span className="text-xs text-muted-foreground">
+                ⏰ {marketStatus.tradingHours}
               </span>
-            ) : (
-              '지금 배치 실행'
             )}
-          </Button>
+          </div>
 
           {batchStatus && (
             <Badge variant={batchStatus.type === 'success' ? 'success' : 'destructive'} className="w-fit animate-scale-in">

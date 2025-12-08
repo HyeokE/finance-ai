@@ -1,33 +1,40 @@
 {
-    "name": "@auto-finance/backend",
-    "version": "1.0.0",
-    "description": "Auto Finance Trading Bot Backend",
-    "main": "dist/server.js",
-    "scripts": {
-        "build": "tsc",
-        "start": "node dist/server.js",
-        "dev": "NODE_OPTIONS='--max-old-space-size=8192' tsx watch src/server.ts",
-        "typecheck": "tsc --noEmit"
-    },
-    "dependencies": {
-        "@auto-finance/shared": "workspace:^",
-        "@google/generative-ai": "^0.24.1",
-        "@supabase/supabase-js": "^2.86.2",
-        "axios": "^1.13.2",
-        "cors": "^2.8.5",
-        "date-fns": "^4.1.0",
-        "dotenv": "^16.3.1",
-        "express": "^4.18.2",
-        "node-cron": "^4.2.1",
-        "openai": "^6.10.0"
-    },
-    "devDependencies": {
-        "@types/axios": "^0.14.4",
-        "@types/cors": "^2.8.17",
-        "@types/express": "^4.17.21",
-        "@types/node": "^20.10.6",
-        "@types/node-cron": "^3.0.11",
-        "tsx": "^4.7.0",
-        "typescript": "^5.3.3"
-    }
+  "name": "@auto-finance/backend",
+  "version": "1.0.0",
+  "description": "Auto Finance Trading Bot Backend",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "NODE_OPTIONS='--max-old-space-size=8192' tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "download-master-files": "tsx src/util/downloadMasterFiles.ts",
+    "test:overseas-price": "tsx src/util/testOverseasDailyPrice.ts",
+    "test:overseas-price-detail": "tsx src/util/testOverseasPriceDetail.ts",
+    "test:overseas-news": "tsx src/util/testOverseasBreakingNews.ts",
+    "test:feature-builder": "tsx src/tests/FeatureBuilder.test.ts",
+    "test:portfolio-aggregator": "tsx src/tests/PortfolioAggregator.test.ts",
+    "test": "npm run test:feature-builder && npm run test:portfolio-aggregator"
+  },
+  "dependencies": {
+    "@auto-finance/shared": "workspace:^",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.86.2",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-cron": "^4.2.1",
+    "openai": "^6.10.0"
+  },
+  "devDependencies": {
+    "@types/axios": "^0.14.4",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
 }

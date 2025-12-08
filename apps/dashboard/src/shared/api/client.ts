@@ -5,7 +5,7 @@ import type {
     Decision,
 } from '@auto-finance/shared';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8888';
 
 const apiClient = axios.create({
     baseURL: API_URL,
